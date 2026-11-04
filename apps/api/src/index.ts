@@ -221,9 +221,9 @@ const app = new Elysia({ adapter: node() })
       return { success: false, message: error instanceof Error ? error.message : 'Hisense API unavailable' }
     }
   })
-  .listen(Number(process.env.API_PORT ?? 4000))
+  .listen(Number(process.env.API_PORT ?? 4001))
 
-console.log(`API running at http://localhost:${process.env.API_PORT ?? 4000}`)
+console.log(`API running at http://localhost:${process.env.API_PORT ?? 4001}`)
 const bappValidationTimer = startBappValidationWorker()
 
 process.on('SIGINT', async () => {

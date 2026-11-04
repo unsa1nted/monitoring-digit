@@ -30,10 +30,10 @@ FLUSH PRIVILEGES;
 ```
 
 - Dashboard: http://localhost:3000
-- API health: http://localhost:4000/health
+- API health: http://localhost:4001/health
 
 Browser requests use `/api/*` on the dashboard origin, forwarded by Nuxt to
-`http://127.0.0.1:4000`. Leave `NUXT_PUBLIC_API_BASE` empty for this setup.
+`http://127.0.0.1:4001`. Leave `NUXT_PUBLIC_API_BASE` empty for this setup.
 Set `NUXT_API_UPSTREAM` on the web server if the API runs at another address.
 Restart the web server after changing these settings. Run `npm run dev` to start
 both services; `npm run dev:web` alone does not start the API.

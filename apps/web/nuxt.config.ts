@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   modules: ['@nuxtjs/tailwindcss'],
   css: ['~/assets/css/main.css'],
   runtimeConfig: {
-    apiUpstream: 'http://127.0.0.1:4000',
+    apiUpstream: 'http://127.0.0.1:4001',
     public: { apiBase: process.env.NUXT_PUBLIC_API_BASE ?? '' }
   },
   typescript: { strict: true, typeCheck: false }
