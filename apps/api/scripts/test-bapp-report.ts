@@ -7,7 +7,7 @@ import { db, pool } from '../src/db/index.js'
 import { users, bappStorages, bappScans, bappSchoolCounts, activityLogs } from '../src/db/schema.js'
 import { hashPassword } from '../src/password.js'
 
-const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3000'
+const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3001'
 const key = `report_${randomUUID().slice(0, 8)}`
 const names = [`${key}_admin`, `${key}_internal`, `${key}_dinas`]
 const schoolIds = [`0${key}1`, `0${key}2`]

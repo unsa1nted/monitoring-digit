@@ -47,10 +47,10 @@ try {
   await insert('invalid-id', storageIds[0], 'invalid')
   await insert(ids[0], storageIds[0], 'valid', otherSchool)
   assert.equal((await loadSchoolProgress([npsn])).get(npsn)?.scanned, 3)
-  const login = await fetch('http://localhost:3000/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: key, password }) })
+  const login = await fetch('http://localhost:3001/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: key, password }) })
   assert.equal(login.status, 200)
   const cookie = login.headers.get('set-cookie')!.split(';')[0]
-  const getRows = async () => (await fetch(`http://localhost:3000/api/bapp-fisik/storages/${storageIds[0]}/scans`, { headers: { cookie } })).json() as Promise<any>
+  const getRows = async () => (await fetch(`http://localhost:3001/api/bapp-fisik/storages/${storageIds[0]}/scans`, { headers: { cookie } })).json() as Promise<any>
   const rows = await getRows()
   const row = rows.data.find((item: any) => item.id === scanId)
   assert.deepEqual({ scanned: row.schoolProgress.scanned, total: row.schoolProgress.total }, { scanned: 3, total: 3 })
@@ -62,7 +62,7 @@ try {
   assert.equal(errorProgress.status, 'error')
   assert.equal(errorProgress.total, null)
   assert.equal(errorProgress.scanned, null)
-  const retry = await fetch(`http://localhost:3000/api/bapp-fisik/storages/${storageIds[0]}/scans/${scanId}/school-recheck`, { method: 'POST', headers: { cookie } })
+  const retry = await fetch(`http://localhost:3001/api/bapp-fisik/storages/${storageIds[0]}/scans/${scanId}/school-recheck`, { method: 'POST', headers: { cookie } })
   assert.equal(retry.status, 200)
   console.log('PASS: complete paginated school lookup, exact NPSN filtering, unique IDs, 0/3 → 1/3 → 2/3 → 3/3, cross-storage scans, duplicates, vendor isolation, errors and retry.')
   if (process.argv.includes('--live')) {

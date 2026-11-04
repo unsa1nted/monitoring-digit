@@ -20,7 +20,7 @@ import { bappReportRoutes } from './bapp-report.js'
 const normalizeProvince = (value: string | null | undefined) => value ? provinceKey(value) : ''
 
 const app = new Elysia({ adapter: node() })
-  .use(cors({ origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000', credentials: true }))
+  .use(cors({ origin: process.env.WEB_ORIGIN ?? 'http://localhost:3001', credentials: true }))
   .use(cookie())
   .onBeforeHandle(async (context) => {
     const path = new URL(context.request.url).pathname.replace(/\/+$/, '')

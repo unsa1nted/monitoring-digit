@@ -29,7 +29,7 @@ GRANT ALL PRIVILEGES ON monitoring_digit.* TO 'monitoring'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-- Dashboard: http://localhost:3000
+- Dashboard: http://localhost:3001
 - API health: http://localhost:4001/health
 
 Browser requests use `/api/*` on the dashboard origin, forwarded by Nuxt to

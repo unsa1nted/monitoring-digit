@@ -7,7 +7,7 @@ import { users, activityLogs } from '../src/db/schema.js'
 import { hashPassword } from '../src/password.js'
 
 // Run against the local running app; creates and removes only uniquely named test accounts.
-const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3000'
+const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3001'
 const prefix = `test_${randomUUID().replaceAll('-', '').slice(0, 12)}`
 const names = [`${prefix}_admin`, `${prefix}_dinas`, `${prefix}_newadmin`, `${prefix}_internal`]
 const password = randomUUID()

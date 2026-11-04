@@ -8,7 +8,7 @@ import { hashPassword } from '../src/password.js'
 import { validateClaimedBappScan } from '../src/bapp-validation.js'
 import { getHisenseTransactions } from '../src/hisense.js'
 
-const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3000'
+const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3001'
 const prefix = `scan_test_${randomUUID().slice(0, 8)}`
 const names = [`${prefix}_internal`, `${prefix}_admin`, `${prefix}_dinas`]
 const storageIds: number[] = []
