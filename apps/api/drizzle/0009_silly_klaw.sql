@@ -1,0 +1,2 @@
+ALTER TABLE `bapp_scans` MODIFY COLUMN `validation_status` enum('pending','checking','valid','invalid','error','unsupported') NOT NULL DEFAULT 'pending';--> statement-breakpoint
+ALTER TABLE `bapp_storages` ADD `vendor` enum('Hisense','Skylink','PLN') DEFAULT 'Hisense' NOT NULL;

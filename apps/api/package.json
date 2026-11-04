@@ -1,0 +1,32 @@
+{
+  "name": "@monitoring-digit/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:seed:internal": "tsx src/db/seed-internal.ts",
+    "db:seed:provinces": "tsx src/db/seed-provinces.ts"
+  },
+  "dependencies": {
+    "@elysiajs/cookie": "^0.8.0",
+    "@elysiajs/cors": "^1.2.0",
+    "@elysiajs/node": "^1.4.5",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.4",
+    "elysia": "^1.2.25",
+    "exceljs": "^4.4.0",
+    "jose": "^6.1.0",
+    "mysql2": "^3.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

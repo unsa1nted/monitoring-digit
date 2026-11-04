@@ -1,0 +1,16 @@
+export default defineNuxtConfig({
+  devtools: { enabled: true },
+  app: {
+    head: {
+      titleTemplate: '%s',
+      meta: [{ name: 'description', content: 'Monitoring Digit system observability dashboard' }]
+    }
+  },
+  modules: ['@nuxtjs/tailwindcss'],
+  css: ['~/assets/css/main.css'],
+  runtimeConfig: {
+    apiUpstream: 'http://127.0.0.1:4000',
+    public: { apiBase: process.env.NUXT_PUBLIC_API_BASE ?? '' }
+  },
+  typescript: { strict: true, typeCheck: false }
+})

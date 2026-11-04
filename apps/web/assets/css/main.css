@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;450;500;600;700;725;800&display=swap');
+
+:root {
+  --ui-radius: 1.25rem;
+  --ui-primary: #0ea5e9;
+  --ui-secondary: #3b82f6;
+  --ui-success: #14b8a6;
+  --ui-warning: #eab308;
+  --ui-error: #ef4444;
+  --ui-neutral-50: #fafaf9;
+  --ui-neutral-100: #f5f5f4;
+  --ui-neutral-200: #e7e5e4;
+  --ui-neutral-500: #78716c;
+  --ui-neutral-700: #44403c;
+  --ui-neutral-900: #1c1917;
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  color: var(--ui-neutral-700);
+  background: var(--ui-neutral-50);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 450;
+  letter-spacing: -0.02em;
+  line-height: 1.6;
+}
+
+/* Softer surfaces for the dashboard shell and cards. */
+.border-stone-200 {
+  border-color: rgb(231 229 228 / 0.72);
+}
+
+/* Keep the dashboard surfaces visibly rounded even when utility generation is cached. */
+.rounded-theme {
+  border-radius: 1.25rem !important;
+}
+
+/* Keep admin navigation items visible above the profile footer. */
+.min-h-screen > aside > nav {
+  flex: 0 0 auto;
+}
+
+.hisense-list-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-neutral-500);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.hisense-page.is-loading > main > section:nth-of-type(2) > div:nth-child(2) {
+  display: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  color: white;
+  background: var(--ui-primary);
+}

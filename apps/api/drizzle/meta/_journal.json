@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1793277996024,
+      "tag": "0000_clear_rachel_grey",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1793279447330,
+      "tag": "0001_wealthy_rogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1793281926503,
+      "tag": "0002_pale_malcolm_colcord",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1793282190645,
+      "tag": "0003_flimsy_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1793282443402,
+      "tag": "0004_pale_lockjaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1793344893244,
+      "tag": "0005_rich_christian_walker",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793708101641,
+      "tag": "0006_secret_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1793709444371,
+      "tag": "0007_fair_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1793710671818,
+      "tag": "0008_amused_crystal",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1793711726284,
+      "tag": "0009_silly_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1793712152963,
+      "tag": "0010_chief_ultimatum",
+      "breakpoints": true
+    }
+  ]
+}

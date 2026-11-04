@@ -1,0 +1,22 @@
+{
+  "name": "monitoring-digit",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@11.4.2",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace @monitoring-digit/api\" \"npm run dev --workspace @monitoring-digit/web\"",
+    "dev:api": "npm run dev --workspace @monitoring-digit/api",
+    "dev:web": "npm run dev --workspace @monitoring-digit/web",
+    "build": "npm run build --workspace @monitoring-digit/web && npm run build --workspace @monitoring-digit/api",
+    "db:generate": "npm run db:generate --workspace @monitoring-digit/api",
+    "db:migrate": "npm run db:migrate --workspace @monitoring-digit/api",
+    "db:seed": "npm run db:seed --workspace @monitoring-digit/api",
+    "db:seed:internal": "npm run db:seed:internal --workspace @monitoring-digit/api",
+    "db:seed:provinces": "npm run db:seed:provinces --workspace @monitoring-digit/api",
+    "db:studio": "npm run db:studio --workspace @monitoring-digit/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

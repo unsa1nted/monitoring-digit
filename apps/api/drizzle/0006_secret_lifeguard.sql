@@ -1,0 +1,2 @@
+ALTER TABLE `activity_logs` MODIFY COLUMN `role` enum('Admin','Dinas','Internal') NOT NULL;--> statement-breakpoint
+ALTER TABLE `users` MODIFY COLUMN `role` enum('Admin','Dinas','Internal') NOT NULL DEFAULT 'Dinas';

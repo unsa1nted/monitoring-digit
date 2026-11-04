@@ -1,0 +1,1 @@
+-- Column `schools.status` already exists in the database.
