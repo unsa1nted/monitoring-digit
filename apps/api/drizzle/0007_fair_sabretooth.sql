@@ -1,5 +1,5 @@
 CREATE TABLE `bapp_storages` (
-	`id` serial AUTO_INCREMENT NOT NULL,
+	`id` bigint unsigned AUTO_INCREMENT NOT NULL,
 	`name` varchar(120) NOT NULL,
 	`type` enum('Dus','Kontainer','Penyimpanan Lainnya') NOT NULL,
 	`created_by` int NOT NULL,

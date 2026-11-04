@@ -1,7 +1,7 @@
-import { mysqlTable, serial, varchar, int, timestamp, mysqlEnum, text, bigint, index, json } from 'drizzle-orm/mysql-core'
+import { mysqlTable, varchar, int, timestamp, mysqlEnum, text, bigint, index, json } from 'drizzle-orm/mysql-core'
 
 export const users = mysqlTable('users', {
-  id: serial('id').primaryKey(),
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   username: varchar('username', { length: 80 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   role: mysqlEnum('role', ['Admin', 'Dinas', 'Internal']).notNull().default('Dinas'),
@@ -10,7 +10,7 @@ export const users = mysqlTable('users', {
 })
 
 export const bappStorages = mysqlTable('bapp_storages', {
-  id: serial('id').primaryKey(),
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   name: varchar('name', { length: 120 }).notNull().unique(),
   type: mysqlEnum('type', ['Dus', 'Kontainer', 'Penyimpanan Lainnya']).notNull(),
   vendor: mysqlEnum('vendor', ['Hisense', 'Skylink', 'PLN']).notNull().default('Hisense'),
@@ -19,7 +19,7 @@ export const bappStorages = mysqlTable('bapp_storages', {
 })
 
 export const bappScans = mysqlTable('bapp_scans', {
-  id: serial('id').primaryKey(),
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   storageId: bigint('storage_id', { mode: 'number', unsigned: true }).notNull().references(() => bappStorages.id),
   requestId: varchar('request_id', { length: 36 }).notNull().unique(),
   barcode: varchar('barcode', { length: 160 }).notNull(),
@@ -43,7 +43,7 @@ export const bappSchoolCounts = mysqlTable('bapp_school_counts', {
 })
 
 export const schools = mysqlTable('schools', {
-  id: serial('id').primaryKey(),
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   npsn: varchar('npsn', { length: 20 }).notNull().unique(),
   namaSekolah: varchar('nama_sekolah', { length: 255 }).notNull(),
   status: varchar('status', { length: 30 }).notNull().default('aktif'),
@@ -54,7 +54,7 @@ export const schools = mysqlTable('schools', {
 })
 
 export const services = mysqlTable('services', {
-  id: serial('id').primaryKey(),
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   name: varchar('name', { length: 120 }).notNull(),
   url: varchar('url', { length: 255 }).notNull(),
   status: mysqlEnum('status', ['operational', 'degraded', 'down']).notNull().default('operational'),
@@ -65,7 +65,7 @@ export const services = mysqlTable('services', {
 })
 
 export const activityLogs = mysqlTable('activity_logs', {
-  id: serial('id').primaryKey(),
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   userId: int('user_id'),
   username: varchar('username', { length: 80 }).notNull(),
   role: mysqlEnum('role', ['Admin', 'Dinas', 'Internal']).notNull(),

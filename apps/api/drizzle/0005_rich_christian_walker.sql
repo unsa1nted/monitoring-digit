@@ -1,5 +1,5 @@
 CREATE TABLE `activity_logs` (
-	`id` serial AUTO_INCREMENT NOT NULL,
+	`id` bigint unsigned AUTO_INCREMENT NOT NULL,
 	`user_id` int,
 	`username` varchar(80) NOT NULL,
 	`role` enum('Admin','Dinas') NOT NULL,

@@ -1,5 +1,5 @@
 CREATE TABLE `users` (
-	`id` serial AUTO_INCREMENT NOT NULL,
+	`id` bigint unsigned AUTO_INCREMENT NOT NULL,
 	`username` varchar(80) NOT NULL,
 	`password_hash` varchar(255) NOT NULL,
 	`role` enum('Admin','Dinas') NOT NULL DEFAULT 'Dinas',

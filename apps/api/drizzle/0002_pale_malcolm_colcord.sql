@@ -1,5 +1,5 @@
 CREATE TABLE `schools` (
-	`id` serial AUTO_INCREMENT NOT NULL,
+	`id` bigint unsigned AUTO_INCREMENT NOT NULL,
 	`npsn` varchar(20) NOT NULL,
 	`nama_sekolah` varchar(255) NOT NULL,
 	`provinsi` varchar(120) NOT NULL,

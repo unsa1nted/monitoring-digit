@@ -1,5 +1,5 @@
 CREATE TABLE `services` (
-	`id` serial AUTO_INCREMENT NOT NULL,
+	`id` bigint unsigned AUTO_INCREMENT NOT NULL,
 	`name` varchar(120) NOT NULL,
 	`url` varchar(255) NOT NULL,
 	`status` enum('operational','degraded','down') NOT NULL DEFAULT 'operational',

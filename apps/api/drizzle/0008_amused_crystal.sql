@@ -1,5 +1,5 @@
 CREATE TABLE `bapp_scans` (
-	`id` serial AUTO_INCREMENT NOT NULL,
+	`id` bigint unsigned AUTO_INCREMENT NOT NULL,
 	`storage_id` bigint unsigned NOT NULL,
 	`request_id` varchar(36) NOT NULL,
 	`barcode` varchar(160) NOT NULL,
