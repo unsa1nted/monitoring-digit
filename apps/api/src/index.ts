@@ -25,7 +25,7 @@ const app = new Elysia({ adapter: node() })
   .onBeforeHandle(async (context) => {
     const path = new URL(context.request.url).pathname.replace(/\/+$/, '')
     if (path === '/api/bapp-report' || path === '/api/bapp-report/export') return
-    if (!path.startsWith('/api/') || ['/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/bapp-fisik/storages'].includes(path) || /^\/api\/bapp-fisik\/storages\/\d+\/scans(?:\/\d+\/(?:recheck|school-recheck))?$/.test(path)) return
+    if (!path.startsWith('/api/') || ['/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/bapp-fisik/storages'].includes(path) || /^\/api\/bapp-fisik\/storages\/\d+\/(?:folders|scans)(?:\/\d+\/(?:recheck|school-recheck))?$/.test(path)) return
     const user = await getSessionUser(context)
     if (user?.role === 'Internal') {
       context.set.status = 403

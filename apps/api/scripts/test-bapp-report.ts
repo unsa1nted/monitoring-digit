@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { inArray } from 'drizzle-orm'
 import ExcelJS from 'exceljs'
 import { db, pool } from '../src/db/index.js'
-import { users, bappStorages, bappScans, bappSchoolCounts, activityLogs } from '../src/db/schema.js'
+import { users, bappStorages, bappScans, bappSchoolCounts, activityLogs, schools } from '../src/db/schema.js'
 import { hashPassword } from '../src/password.js'
 
 const base = process.env.TEST_WEB_ORIGIN ?? 'http://localhost:3001'
@@ -12,6 +12,7 @@ const key = `report_${randomUUID().slice(0, 8)}`
 const names = [`${key}_admin`, `${key}_internal`, `${key}_dinas`]
 const schoolIds = [`0${key}1`, `0${key}2`]
 const storageIds: number[] = []
+const directoryNpsns: string[] = []
 const password = randomUUID()
 let browser: any
 async function req(path: string, cookie?: string) { return fetch(base + path, { headers: cookie ? { cookie } : {} }) }
@@ -29,7 +30,7 @@ try {
   }
   const expectedA = [`000${key}A1`, `000${key}A2`, `000${key}A3`]
   const expectedB = [`000${key}B1`, `000${key}B2`]
-  await db.insert(bappSchoolCounts).values([{ npsn: schoolIds[0], status: 'ready', transactionIds: expectedA, checkedAt: new Date() }, { npsn: schoolIds[1], status: 'ready', transactionIds: expectedB, checkedAt: new Date() }])
+  await db.insert(bappSchoolCounts).values([{ npsn: schoolIds[0], status: 'ready', serialNumbers: expectedA, checkedAt: new Date() }, { npsn: schoolIds[1], status: 'ready', serialNumbers: expectedB, checkedAt: new Date() }])
   const insert = (barcode: string, storageId: number, npsn: string | null, status: 'valid' | 'unsupported' = 'valid') => db.insert(bappScans).values({ barcode, storageId, npsn, validationStatus: status, schoolName: npsn ? `${key} school` : null, requestId: randomUUID(), scannedBy: createdUsers[1].id })
   await insert(expectedA[0], storageIds[0], schoolIds[0])
   await insert(expectedA[1], storageIds[0], schoolIds[0])
@@ -54,6 +55,9 @@ try {
     assert.equal(report.summary.incompletePid, 1)
     assert.equal(report.summary.completeSchools, 1)
     assert.equal(report.summary.incompleteSchools, 1)
+    assert.equal(report.incompleteSchools.totalRows, 1)
+    assert.equal(report.incompleteSchools.data[0].npsn, schoolIds[1])
+    assert.equal(report.incompleteSchools.data[0].missing, 1)
     assert.equal(report.summary.unknownTransactions, 1)
     const page2 = await (await req(`/api/bapp-report?${search}&page=2`, cookie)).json() as any
     assert.equal(page2.data.length, 6)
@@ -66,6 +70,7 @@ try {
     const unknown = await (await req(`/api/bapp-report?${search}&vendor=PLN`, cookie)).json() as any
     assert.equal(unknown.summary.totalPid, 0)
     assert.equal(unknown.summary.unknownTransactions, 1)
+    assert.equal(unknown.incompleteSchools.totalRows, 0)
     assert.equal((await req('/api/bapp-report?completion=invalid', cookie)).status, 422)
     const file = await req(`/api/bapp-report/export?${search}`, cookie)
     assert.equal(file.status, 200)
@@ -73,7 +78,7 @@ try {
     const workbook = new ExcelJS.Workbook()
     await workbook.xlsx.load(await file.arrayBuffer())
     assert.equal(workbook.worksheets.length, 3)
-    const tx = workbook.getWorksheet('Transaksi')!
+    const tx = workbook.getWorksheet('Serial Number')!
     assert.equal(tx.rowCount, 57, 'Export includes every filtered row, not just page one')
     assert.equal(tx.getCell('C2').value, expectedA[0])
     assert.equal(tx.getCell('D2').value, schoolIds[0], 'Leading zero NPSN stays text')
@@ -84,7 +89,59 @@ try {
     assert.equal(summary.get('PID: BAPP belum terscan'), 1)
     assert.equal(workbook.getWorksheet('Rekap Sekolah')!.rowCount, 3)
   }
-  console.log('PASS: Admin/Internal access; Dinas/anonymous rejected; storage/vendor/completion/search filters; PID counts without duplicates; pagination; full XLSX export; leading zeros and formula-safe text.')
+  // More than one page of distinct schools, with duplicate scans that must not inflate the count.
+  const pagingKey = `paging_${randomUUID().slice(0, 8)}`
+  const [{ id: pagingStorageId }] = await db.insert(bappStorages).values({ name: pagingKey, type: 'Dus', vendor: 'Hisense', createdBy: createdUsers[1].id }).$returningId()
+  storageIds.push(pagingStorageId)
+  const pagingNpsns = Array.from({ length: 51 }, (_, i) => `${pagingKey}_${String(i).padStart(2, '0')}`)
+  schoolIds.push(...pagingNpsns)
+  await db.insert(bappSchoolCounts).values(pagingNpsns.map(npsn => ({ npsn, status: 'ready' as const, serialNumbers: [`${npsn}_1`, `${npsn}_2`], checkedAt: new Date() })))
+  await db.insert(bappScans).values(pagingNpsns.flatMap(npsn => Array.from({ length: 2 }, () => ({ barcode: `${npsn}_1`, storageId: pagingStorageId, npsn, validationStatus: 'valid' as const, schoolName: npsn, requestId: randomUUID(), scannedBy: createdUsers[1].id }))))
+  for (const name of names.slice(0, 2)) {
+    const cookie = await login(name)
+    const path = `/api/bapp-report?search=${pagingKey}`
+    const first = await (await req(path, cookie)).json() as any
+    const second = await (await req(`${path}&schoolPage=2`, cookie)).json() as any
+    assert.equal(first.incompleteSchools.totalRows, 51)
+    assert.equal(first.incompleteSchools.data.length, 50)
+    assert.equal(second.incompleteSchools.data.length, 1)
+    assert.equal(second.incompleteSchools.totalRows, 51)
+    assert.equal(second.page, 1, 'School pagination is independent of transaction pagination')
+    assert.equal(new Set([...first.incompleteSchools.data, ...second.incompleteSchools.data].map(s => s.npsn)).size, 51)
+    assert.ok(first.incompleteSchools.data.every((s: any) => s.scanned === 1 && s.total === 2 && s.missing === 1))
+    const clamped = await (await req(`${path}&schoolPage=99`, cookie)).json() as any
+    assert.equal(clamped.incompleteSchools.page, 2)
+    assert.equal((await req(`${path}&schoolPage=0`, cookie)).status, 422)
+  }
+  const unscannedKey = `unscan_${randomUUID().slice(0, 8)}`
+  directoryNpsns.push(...Array.from({ length: 52 }, (_, i) => `${unscannedKey}_${i}`))
+  await db.insert(schools).values(directoryNpsns.map((npsn, i) => ({ npsn, namaSekolah: npsn, provinsi: 'Aceh', kabKota: 'Test', kecamatan: 'Test', jumlahPid: i === 51 ? 0 : 3 })))
+  await db.insert(schools).values({ npsn: pagingNpsns[0], namaSekolah: `${unscannedKey} already scanned`, provinsi: 'Aceh', kabKota: 'Test', kecamatan: 'Test', jumlahPid: 3 })
+  directoryNpsns.push(pagingNpsns[0])
+  for (const name of names.slice(0, 2)) {
+    const cookie = await login(name)
+    const path = `/api/bapp-report?search=${unscannedKey}`
+    const first = await (await req(path, cookie)).json() as any
+    assert.equal(first.totalRows, 0, 'Unscanned schools do not fabricate scan records')
+    assert.equal(first.summary.unscannedSchools, 51)
+    assert.equal(first.summary.incompleteSchools, 51)
+    assert.equal(first.summary.incompletePid, 153)
+    assert.equal(first.incompleteSchools.totalRows, 51)
+    assert.equal(first.incompleteSchools.data.length, 50)
+    assert.ok(first.incompleteSchools.data.every((s: any) => s.scanned === 0 && s.total === 3 && s.missing === 3))
+    const second = await (await req(`${path}&schoolPage=2`, cookie)).json() as any
+    assert.equal(second.incompleteSchools.data.length, 1)
+    for (const filter of ['vendor=Hisense', `storage=${storageIds[0]}`, 'completion=complete', 'completion=unknown']) {
+      const filtered = await (await req(`${path}&${filter}`, cookie)).json() as any
+      assert.equal(filtered.incompleteSchools.totalRows, 0)
+    }
+    const file = await req(`/api/bapp-report/export?search=${unscannedKey}`, cookie)
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(await file.arrayBuffer())
+    assert.equal(workbook.getWorksheet('Rekap Sekolah')!.rowCount, 52)
+    assert.equal(workbook.getWorksheet('Serial Number')!.rowCount, 1)
+  }
+  console.log('PASS: Admin/Internal access; filters; deduplicated counts; unscanned database schools; zero allocation exclusion; school pagination; full XLSX export.')
   if (process.argv[2]) {
     const { chromium } = await import(process.argv[2])
     browser = await chromium.launch({ headless: true })
@@ -99,10 +156,10 @@ try {
       await page.getByRole('heading', { name: 'Rekap Scan BAPP', exact: true }).waitFor()
       await page.locator('#report-search').fill(key)
       await page.getByRole('button', { name: 'Terapkan Filter', exact: true }).click()
-      await page.getByText('56 scan · 5 transaksi unik', { exact: false }).waitFor()
+      await page.getByText('56 scan · 5 serial number unik', { exact: false }).waitFor()
       await page.locator('#report-storage').selectOption(String(storageIds[0]))
       await page.getByRole('button', { name: 'Terapkan Filter', exact: true }).click()
-      await page.getByText('53 scan · 2 transaksi unik', { exact: false }).waitFor()
+      await page.getByText('53 scan · 2 serial number unik', { exact: false }).waitFor()
       const downloadPromise = page.waitForEvent('download')
       await page.getByRole('button', { name: 'Export Excel', exact: true }).click()
       const download = await downloadPromise
@@ -122,6 +179,7 @@ try {
     await db.delete(bappStorages).where(inArray(bappStorages.id, storageIds))
   }
   await db.delete(bappSchoolCounts).where(inArray(bappSchoolCounts.npsn, schoolIds))
+  if (directoryNpsns.length) await db.delete(schools).where(inArray(schools.npsn, directoryNpsns))
   await db.delete(activityLogs).where(inArray(activityLogs.username, names))
   await db.delete(users).where(inArray(users.username, names))
   await pool.end()

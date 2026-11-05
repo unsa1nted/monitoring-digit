@@ -137,6 +137,26 @@ async function chooseProvince(key: string) {
 
       <div class="mt-7">
         <h3 class="font-semibold text-ink">Rincian detail status</h3>
+        <p class="mt-1 text-xs text-muted">{{ scopeName }}</p>
+        <dl class="mt-4 grid gap-4 rounded-xl border border-stone-200 bg-stone-50 p-4 sm:grid-cols-3"
+          aria-live="polite" aria-atomic="true">
+          <div>
+            <dt class="text-xs font-medium text-muted">Total Sekolah :</dt>
+            <dd class="mt-2 text-xl font-semibold tabular-nums text-ink">{{ number(current.allocatedSchools) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-muted">{{ selectedProvince ? `Total Alokasi PID di Provinsi ${scopeName}` : 'Total Alokasi PID di Semua Provinsi' }} :</dt>
+            <dd class="mt-2 text-xl font-semibold tabular-nums text-ink">{{ number(current.allocatedPid) }} <span
+                class="text-xs font-normal text-muted">PID</span></dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-muted">Total Sudah Terkirim :</dt>
+            <dd class="mt-2 text-xl font-semibold tabular-nums text-sky-700">{{ number(current.shipped) }} <span
+                class="text-xs font-normal text-muted">PID</span></dd>
+            <p class="mt-1 text-xs text-muted">Kumulatif sudah keluar gudang</p>
+          </div>
+        </dl>
+        <p class="mt-2 text-xs text-muted">Total sekolah dan alokasi PID berdasarkan database sekolah. Status pengiriman berdasarkan data Hisense.</p>
 
         <HisenseStatusDonut :rows="statusRows" :total="current.transactions" />
       </div>

@@ -1,4 +1,7 @@
 import { getHisenseSmkPages, type HisenseTransaction } from './hisense.js'
+import { sql } from 'drizzle-orm'
+import { db } from './db/index.js'
+import { schools } from './db/schema.js'
 import { provinceKey } from './province-statistics.js'
 import { provinceNames } from '../../../shared/province-names.js'
 import { hisenseProgressStatuses, type HisenseProgressSummary, type HisenseProgressResponse, type HisenseSchoolProgress } from '../../../shared/hisense-progress.js'
@@ -12,7 +15,7 @@ const knownCodes = hisenseProgressStatuses.map(status => status.code as string)
 const shippedCodes = new Set(knownCodes.filter(code => code !== 'PENGIRIMAN GAGAL'))
 
 function createBucket() {
-  return { transactions: 0, schools: new Set<string>(), missingNpsn: 0, shipped: 0, statuses: new Map<string, number>() }
+  return { allocatedSchools: 0, allocatedPid: 0, transactions: 0, schools: new Set<string>(), missingNpsn: 0, shipped: 0, statuses: new Map<string, number>() }
 }
 type Bucket = ReturnType<typeof createBucket>
 
@@ -31,6 +34,7 @@ function summarize(bucket: Bucket): HisenseProgressSummary {
   const count = (code: string) => bucket.statuses.get(code) ?? 0
   const extra = [...bucket.statuses.keys()].filter(code => !knownCodes.includes(code)).sort()
   return {
+    allocatedSchools: bucket.allocatedSchools, allocatedPid: bucket.allocatedPid,
     transactions: bucket.transactions, schools: bucket.schools.size, missingNpsn: bucket.missingNpsn,
     shipped: bucket.shipped,
     installationComplete: count('INSTALASI SELESAI'),
@@ -43,6 +47,24 @@ function summarize(bucket: Bucket): HisenseProgressSummary {
 async function fetchProgress(): Promise<HisenseProgressResponse> {
   const total = createBucket()
   const provinces = new Map(provinceNames.map(name => [provinceKey(name), { name: name as string, mapped: true, bucket: createBucket() }]))
+  const allocations = await db.select({
+    provinsi: schools.provinsi,
+    schoolCount: sql<number>`count(*)`.mapWith(Number),
+    pidCount: sql<number>`coalesce(sum(${schools.jumlahPid}), 0)`.mapWith(Number)
+  }).from(schools).groupBy(schools.provinsi)
+  for (const allocation of allocations) {
+    const name = allocation.provinsi.trim() || 'Provinsi tidak tersedia'
+    const key = provinceKey(name)
+    let province = provinces.get(key)
+    if (!province) {
+      province = { name, mapped: false, bucket: createBucket() }
+      provinces.set(key, province)
+    }
+    province.bucket.allocatedSchools += allocation.schoolCount
+    province.bucket.allocatedPid += allocation.pidCount
+    total.allocatedSchools += allocation.schoolCount
+    total.allocatedPid += allocation.pidCount
+  }
   const seen = new Set<string>()
   const schoolsByProvince = new Map<string, Map<string, HisenseSchoolProgress>>()
   for await (const page of getHisenseSmkPages()) {

@@ -91,6 +91,35 @@ export async function getHisenseTransaction(id: string, selectedDirectorate?: st
 
 export function configuredDirectorates() { return directorates.map((code) => code.toUpperCase()) }
 
+// A search result may match an ID, school name, or a partial serial number.
+// BAPP verification accepts only an exact serial match and checks every page
+// so ambiguous serial numbers cannot be assigned to the wrong school.
+export async function getHisenseBySerialNumber(serialNumber: string, selectedDirectorate = 'smk', options: { bypassCache?: boolean } = {}) {
+  const serial = serialNumber.trim()
+  if (!serial) return null
+  const started = Date.now()
+  let match: HisenseTransaction | null = null
+  for (let page = 1; page <= 100; page++) {
+    if (Date.now() - started > 90_000) throw new Error('Pencarian serial number terlalu lama. Silakan cek ulang.')
+    const result = await getHisenseTransactions({ search: serial, limit: '100', page: String(page) }, selectedDirectorate, options)
+    for (const item of result.data) {
+      if (item.serial_number?.trim() !== serial) continue
+      if (item.kode_direktorat?.toLowerCase() !== selectedDirectorate.toLowerCase() || !item.npsn_info?.npsn?.trim()) {
+        throw new Error('Data sekolah serial number belum dapat dikonfirmasi.')
+      }
+      if (match && (match.id_transaksi !== item.id_transaksi || match.npsn_info?.npsn?.trim() !== item.npsn_info.npsn.trim())) {
+        throw new Error('Serial number ditemukan pada lebih dari satu unit atau sekolah.')
+      }
+      match = item
+    }
+    if (result.meta?.has_next_page === false) return match
+    if (result.meta?.has_next_page !== true || result.meta.current_page !== page || !result.data.length) {
+      throw new Error('Hasil pencarian serial number belum lengkap. Silakan cek ulang.')
+    }
+  }
+  throw new Error('Batas pencarian serial number tercapai. Silakan cek ulang.')
+}
+
 // Statistics must traverse every page, independently of the paginated transaction UI.
 // Do not cache the full records (photos, contacts, etc.) for this aggregation.
 export async function* getHisenseSmkPages(filters: Record<string, string | undefined> = {}) {

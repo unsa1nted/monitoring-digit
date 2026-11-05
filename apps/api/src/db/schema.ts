@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, int, timestamp, mysqlEnum, text, bigint, index, json } from 'drizzle-orm/mysql-core'
+import { mysqlTable, varchar, int, timestamp, mysqlEnum, text, bigint, index, json, uniqueIndex } from 'drizzle-orm/mysql-core'
 
 export const users = mysqlTable('users', {
   id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
@@ -18,9 +18,17 @@ export const bappStorages = mysqlTable('bapp_storages', {
   createdAt: timestamp('created_at').defaultNow().notNull()
 })
 
+export const bappFolders = mysqlTable('bapp_folders', {
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+  storageId: bigint('storage_id', { mode: 'number', unsigned: true }).notNull().references(() => bappStorages.id),
+  number: int('number', { unsigned: true }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull()
+}, table => ({ storageNumber: uniqueIndex('bapp_folders_storage_number_unique').on(table.storageId, table.number) }))
+
 export const bappScans = mysqlTable('bapp_scans', {
   id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   storageId: bigint('storage_id', { mode: 'number', unsigned: true }).notNull().references(() => bappStorages.id),
+  folderId: bigint('folder_id', { mode: 'number', unsigned: true }).references(() => bappFolders.id),
   requestId: varchar('request_id', { length: 36 }).notNull().unique(),
   barcode: varchar('barcode', { length: 160 }).notNull(),
   scannedBy: int('scanned_by').notNull(),
@@ -37,6 +45,7 @@ export const bappSchoolCounts = mysqlTable('bapp_school_counts', {
   npsn: varchar('npsn', { length: 20 }).primaryKey(),
   status: mysqlEnum('status', ['pending', 'checking', 'ready', 'error']).notNull().default('pending'),
   transactionIds: json('transaction_ids').$type<string[]>(),
+  serialNumbers: json('serial_numbers').$type<string[]>(),
   checkedAt: timestamp('checked_at'),
   claimedAt: timestamp('claimed_at'),
   message: varchar('message', { length: 255 })

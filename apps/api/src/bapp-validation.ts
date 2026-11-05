@@ -1,12 +1,12 @@
 import { and, eq, lt, or, isNull } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { bappScans, bappStorages } from './db/schema.js'
-import { getHisenseTransaction } from './hisense.js'
+import { getHisenseBySerialNumber } from './hisense.js'
 import { processSchoolCounts } from './bapp-school-progress.js'
 
 let running = false
 
-export async function validateClaimedBappScan(scan: { id: number; barcode: string }, claimedAt: Date, lookup = getHisenseTransaction) {
+export async function validateClaimedBappScan(scan: { id: number; barcode: string }, claimedAt: Date, lookup = getHisenseBySerialNumber) {
   const claim = and(eq(bappScans.id, scan.id), eq(bappScans.validationStatus, 'checking'), eq(bappScans.claimedAt, claimedAt))
   const [storage] = await db.select({ vendor: bappStorages.vendor }).from(bappScans).innerJoin(bappStorages, eq(bappStorages.id, bappScans.storageId)).where(eq(bappScans.id, scan.id)).limit(1)
   if (!storage) return
@@ -18,13 +18,13 @@ export async function validateClaimedBappScan(scan: { id: number; barcode: strin
     const transaction = await lookup(scan.barcode, 'smk', { bypassCache: true })
     await db.update(bappScans).set({
       validationStatus: transaction ? 'valid' : 'invalid',
-      validationMessage: transaction ? 'Nomor transaksi ditemukan di Hisense.' : 'Nomor transaksi tidak ditemukan di Hisense SMK.',
+      validationMessage: transaction ? 'Serial number ditemukan di Hisense.' : 'Serial number tidak ditemukan di Hisense SMK.',
       schoolName: transaction?.npsn_info?.nama_sekolah?.slice(0, 255) ?? null,
       npsn: transaction?.npsn_info?.npsn?.trim().slice(0, 20) || null,
       checkedAt: new Date()
     }).where(claim)
   } catch {
-    await db.update(bappScans).set({ validationStatus: 'error', validationMessage: 'Hisense belum dapat memastikan transaksi. Silakan cek ulang.', checkedAt: new Date() }).where(claim)
+    await db.update(bappScans).set({ validationStatus: 'error', validationMessage: 'Hisense belum dapat memastikan serial number. Silakan cek ulang.', checkedAt: new Date() }).where(claim)
   }
 }
 

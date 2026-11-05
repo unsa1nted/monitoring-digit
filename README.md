@@ -2,6 +2,8 @@
 
 Nuxt dashboard + Elysia API + MySQL database.
 
+Panduan pengguna: [alur dan cara penggunaan](docs/panduan-aplikasi/README.md), [flowchart bergambar](docs/panduan-aplikasi/panduan-monitoring-digit.html), atau [PDF](docs/panduan-aplikasi/panduan-monitoring-digit.pdf).
+
 Panduan deployment: [VPS Ubuntu, Nginx, HTTPS, dan systemd](docs/deploy-vps-ubuntu.md).
 
 ## Requirements

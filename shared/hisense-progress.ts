@@ -16,6 +16,8 @@ export const hisenseProgressStatuses = [
 ] as const
 
 export type HisenseProgressSummary = {
+  allocatedSchools: number
+  allocatedPid: number
   // Each unique Hisense id_transaksi represents one PID unit.
   // Retain the API field name; the dashboard labels this count as Total PID.
   transactions: number

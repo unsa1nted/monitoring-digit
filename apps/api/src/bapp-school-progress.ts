@@ -6,17 +6,24 @@ import { getHisenseSmkPages, type HisenseTransaction } from './hisense.js'
 type SchoolPages = (filters: Record<string, string | undefined>) => AsyncIterable<HisenseTransaction[]>
 export type SchoolProgress = { status: 'pending' | 'checking' | 'ready' | 'error'; scanned: number | null; total: number | null; checkedAt: Date | null }
 
-export async function getSchoolTransactionIds(npsn: string, pages: SchoolPages = getHisenseSmkPages) {
+export async function getSchoolSerialNumbers(npsn: string, pages: SchoolPages = getHisenseSmkPages) {
   const ids = new Set<string>()
+  const unitsBySerial = new Map<string, string>()
   for await (const rows of pages({ search: npsn })) {
     for (const row of rows) {
       if (row.npsn_info?.npsn?.trim() !== npsn) continue
-      if (!row.id_transaksi?.trim()) throw new Error('Nomor transaksi sekolah tidak lengkap.')
-      ids.add(row.id_transaksi.trim())
+      if (!row.serial_number?.trim()) throw new Error('Serial number sekolah tidak lengkap.')
+      const serial = row.serial_number.trim()
+      if (row.id_transaksi) {
+        const previous = unitsBySerial.get(serial)
+        if (previous && previous !== row.id_transaksi) throw new Error('Serial number sekolah berulang pada unit berbeda.')
+        unitsBySerial.set(serial, row.id_transaksi)
+      }
+      ids.add(row.serial_number.trim())
     }
   }
   // NPSN comes from an already verified scan; zero matches means inconsistent data.
-  if (!ids.size) throw new Error('Transaksi sekolah belum dapat dikonfirmasi.')
+  if (!ids.size) throw new Error('Serial number sekolah belum dapat dikonfirmasi.')
   return [...ids]
 }
 
@@ -41,7 +48,7 @@ export async function loadSchoolProgress(npsns: string[]): Promise<Map<string, S
   const byNpsn = new Map(cached.map(row => [row.npsn, row]))
   for (const npsn of keys) {
     const row = byNpsn.get(npsn)
-    const stale = row && ['ready', 'error'].includes(row.status) && (!row.checkedAt || Date.now() - row.checkedAt.getTime() > 10 * 60_000)
+    const stale = row && ['ready', 'error'].includes(row.status) && ((row.status === 'ready' && !row.serialNumbers?.length) || !row.checkedAt || Date.now() - row.checkedAt.getTime() > 10 * 60_000)
     if (!row || stale) {
       await queueSchoolCount(npsn, !!stale)
       result.set(npsn, { status: 'pending', scanned: null, total: null, checkedAt: row?.checkedAt ?? null })
@@ -58,25 +65,25 @@ export async function loadSchoolProgress(npsns: string[]): Promise<Map<string, S
   }
   for (const row of cached) {
     if (result.has(row.npsn)) continue
-    if (row.status === 'ready' && row.transactionIds?.length) {
-      const expected = new Set(row.transactionIds)
+    if (row.status === 'ready' && row.serialNumbers?.length) {
+      const expected = new Set(row.serialNumbers)
       if (scans.some(scan => scan.npsn === row.npsn && !expected.has(scan.barcode) && scan.checkedAt && row.checkedAt && scan.checkedAt >= row.checkedAt)) {
         await queueSchoolCount(row.npsn, true)
         result.set(row.npsn, { status: 'pending', scanned: null, total: null, checkedAt: row.checkedAt })
         continue
       }
-      result.set(row.npsn, { status: 'ready', ...countSchoolProgress(row.transactionIds, scannedIds.get(row.npsn) ?? []), checkedAt: row.checkedAt })
+      result.set(row.npsn, { status: 'ready', ...countSchoolProgress(row.serialNumbers, scannedIds.get(row.npsn) ?? []), checkedAt: row.checkedAt })
     } else result.set(row.npsn, { status: row.status === 'ready' ? 'error' : row.status, scanned: null, total: null, checkedAt: row.checkedAt })
   }
   return result
 }
 
-export async function syncClaimedSchoolCount(npsn: string, claimedAt: Date, lookup = getSchoolTransactionIds) {
+export async function syncClaimedSchoolCount(npsn: string, claimedAt: Date, lookup = getSchoolSerialNumbers) {
   const claim = and(eq(bappSchoolCounts.npsn, npsn), eq(bappSchoolCounts.status, 'checking'), eq(bappSchoolCounts.claimedAt, claimedAt))
   try {
     const ids = await lookup(npsn)
-    if (!ids.length) throw new Error('Transaksi sekolah belum lengkap.')
-    await db.update(bappSchoolCounts).set({ status: 'ready', transactionIds: [...new Set(ids)], checkedAt: new Date(), message: null }).where(claim)
+    if (!ids.length) throw new Error('Serial number sekolah belum lengkap.')
+    await db.update(bappSchoolCounts).set({ status: 'ready', serialNumbers: [...new Set(ids)], checkedAt: new Date(), message: null }).where(claim)
   } catch {
     await db.update(bappSchoolCounts).set({ status: 'error', checkedAt: new Date(), message: 'Jumlah BAPP belum dapat diambil dari Hisense. Silakan cek ulang.' }).where(claim)
   }
