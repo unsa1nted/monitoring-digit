@@ -18,6 +18,7 @@ export type HisenseTransaction = {
 
 type TokenState = { token: string; expiresAt: number }
 const tokenCache = new Map<string, TokenState>()
+let exportTokenCache: TokenState | null = null
 type ResponseCacheState = { response: HisenseListResponse; expiresAt: number }
 const responseCache = new Map<string, ResponseCacheState>()
 const configuredCacheTtl = Number(process.env.HISENSE_CACHE_TTL_MS ?? 30_000)
@@ -43,6 +44,63 @@ async function tokenFor(code: string) {
   const expiresInDays = Number.parseInt(payload.data.expires_in ?? '1', 10) || 1
   tokenCache.set(code, { token: payload.data.token, expiresAt: Date.now() + expiresInDays * 24 * 60 * 60 * 1000 })
   return payload.data.token
+}
+
+async function adminToken() {
+    if (exportTokenCache && exportTokenCache.expiresAt > Date.now() + 60_000) return exportTokenCache.token
+    const credentials = credentialsFor('smk')
+    if (!credentials) throw new Error('Kredensial Hisense SMK belum diatur di server.')
+    const response = await fetch(`${baseUrl}/hi-auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credentials), signal: AbortSignal.timeout(30_000) })
+    if (!response.ok) throw new Error(`Login ekspor Hisense gagal (${response.status}).`)
+    const payload = await response.json() as { token?: string }
+    if (!payload.token) throw new Error('Login ekspor Hisense tidak mengembalikan token.')
+    exportTokenCache = { token: payload.token, expiresAt: Date.now() + 60 * 60 * 1000 }
+    return payload.token
+}
+
+export async function reviewHisenseAllocation(id: string, body: { kode_status_progress: 'DISETUJUI' | 'REVISI'; reviewer_name: string; catatan_revisi?: string; tag_revisi?: string }) {
+  let token = await adminToken()
+  const request = () => fetch(`${baseUrl}/hi-transaksi/alokasi/review/${encodeURIComponent(id)}`, {
+    method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-active-batch': '3' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(90_000)
+  })
+  let response = await request()
+  if (response.status === 401) {
+    await response.body?.cancel()
+    exportTokenCache = null
+    token = await adminToken()
+    response = await request()
+  }
+  const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null
+  if (!response.ok || result?.success === false) throw new Error(result?.message || `Reviu Hisense gagal (${response.status}).`)
+}
+
+export async function downloadHisenseSmkAllocationExcel(onProgress: (received: number, total: number | null) => void = () => {}) {
+  const url = new URL(`${baseUrl}/hi-transaksi/alokasi/export`)
+  for (const [key, value] of Object.entries({ format: 'excel', search: 'true', exclude_pengajuan_penarikan: 'true', kode_direktorat: 'SMK', show_sn_filled: 'true', show_sn_empty: 'true', sort_by: 'id_transaksi', order: 'asc' })) url.searchParams.set(key, value)
+  let token = await adminToken()
+  const request = () => fetch(url, { headers: { Authorization: `Bearer ${token}`, 'x-active-batch': '3', Accept: 'application/json, text/plain, */*' }, signal: AbortSignal.timeout(300_000) })
+  let response = await request()
+  if (response.status === 401) {
+    await response.body?.cancel()
+    exportTokenCache = null
+    token = await adminToken()
+    response = await request()
+  }
+  if (!response.ok) throw new Error(`Unduh Excel Hisense gagal (${response.status}).`)
+  if (!response.body) throw new Error('Excel Hisense tidak memiliki isi.')
+  const total = Number(response.headers.get('content-length')) || null
+  const chunks: Uint8Array[] = []
+  let received = 0
+  for await (const chunk of response.body) {
+    received += chunk.length
+    if (received > 100 * 1024 * 1024) throw new Error('Excel Hisense melebihi batas 100 MB.')
+    chunks.push(chunk)
+    onProgress(received, total)
+  }
+  const buffer = Buffer.concat(chunks)
+  if (buffer.subarray(0, 2).toString() !== 'PK') throw new Error('Respons Hisense bukan file Excel .xlsx.')
+  return buffer
 }
 
 async function fetchDirectorate(code: string, query: Record<string, string | undefined>, bypassCache = false, cacheResponse = true) {

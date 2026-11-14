@@ -1,0 +1,5 @@
+# #0012 Cek BAPP photo navigation changes index but image appears unchanged; add keyed loading state, fit image without photo scroll, move verdict summary above photo, trim Hisense detail and remove shipping.
+
+- 2026-11-13T07:07:52Z `issue`: Cek BAPP photo navigation changes index but image appears unchanged; add keyed loading state, fit image without photo scroll, move verdict summary above photo, trim Hisense detail and remove shipping. [apps/web/pages/cek-bapp.vue]
+- 2026-11-13T07:10:36Z `attempt`: Keyed photo image by selected serial and photo field, added per-photo loading/error state, moved review badges above image, constrained image to fit, and trimmed right detail to Jumlah PID. [apps/web/pages/cek-bapp.vue:69] (worked)
+- 2026-11-13T07:10:44Z `fix`: Photo navigation now remounts each image with serial/photo key and displays Sedang proses foto until load/error; photo fits without scroll. Verdict badges above photo, detail ends at Jumlah PID, shipping removed. Web build passed. [apps/web/pages/cek-bapp.vue:177]

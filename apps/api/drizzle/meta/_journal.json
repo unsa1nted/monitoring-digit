@@ -92,6 +92,55 @@
       "when": 1793863064215,
       "tag": "0012_round_pete_wisdom",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1794544681584,
+      "tag": "0013_round_quasimodo",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1794545792535,
+      "tag": "0014_tiresome_mikhail_rasputin",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "5",
+      "when": 1794548591089,
+      "tag": "0015_panoramic_rictor",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1794557546503,
+      "tag": "0016_absent_rockslide",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1794563314528,
+      "tag": "0017_little_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1794643761419,
+      "tag": "0018_giant_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1794650718450,
+      "tag": "0019_goofy_calypso",
+      "breakpoints": true
     }
   ]
 }

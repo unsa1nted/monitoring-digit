@@ -1,0 +1,1 @@
+ALTER TABLE `petugas_reviewer` ADD `alokasi_persen` int;

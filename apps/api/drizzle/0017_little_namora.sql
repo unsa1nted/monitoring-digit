@@ -1,0 +1,9 @@
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_plang_sekolah` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_box_pic` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_kelengkapan_unit` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_proses_instalasi` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_kesesuaian_serial_number` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_training_rumah_pendidikan` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_bapp_1` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `foto_bapp_2` enum('Ya','Tidak');--> statement-breakpoint
+ALTER TABLE `master_bapp` MODIFY COLUMN `hasil_akhir_reviu` enum('Sesuai','Tidak Sesuai');

@@ -16,6 +16,7 @@ import { adminUsers } from './admin-users.js'
 import { bappStorageRoutes } from './bapp-storage.js'
 import { startBappValidationWorker } from './bapp-validation.js'
 import { bappReportRoutes } from './bapp-report.js'
+import { adminBappReview, bappReview, startBappHisenseSyncScheduler } from './bapp-review.js'
 
 const normalizeProvince = (value: string | null | undefined) => value ? provinceKey(value) : ''
 
@@ -24,7 +25,7 @@ const app = new Elysia({ adapter: node() })
   .use(cookie())
   .onBeforeHandle(async (context) => {
     const path = new URL(context.request.url).pathname.replace(/\/+$/, '')
-    if (path === '/api/bapp-report' || path === '/api/bapp-report/export') return
+  if (path === '/api/bapp-report' || path === '/api/bapp-report/export' || path === '/api/bapp-dashboard' || path === '/api/bapp-review' || path.startsWith('/api/bapp-review/')) return
     if (!path.startsWith('/api/') || ['/api/auth/login', '/api/auth/me', '/api/auth/logout', '/api/bapp-fisik/storages'].includes(path) || /^\/api\/bapp-fisik\/storages\/\d+\/(?:folders|scans)(?:\/\d+\/(?:recheck|school-recheck))?$/.test(path)) return
     const user = await getSessionUser(context)
     if (user?.role === 'Internal') {
@@ -33,6 +34,8 @@ const app = new Elysia({ adapter: node() })
     }
   })
   .use(adminUsers)
+  .use(adminBappReview)
+  .use(bappReview)
   .use(bappStorageRoutes)
   .use(bappReportRoutes)
   .get('/health', () => ({ status: 'ok', service: 'monitoring-digit-api' }))
@@ -225,9 +228,11 @@ const app = new Elysia({ adapter: node() })
 
 console.log(`API running at http://localhost:${process.env.API_PORT ?? 4001}`)
 const bappValidationTimer = startBappValidationWorker()
+const bappHisenseSyncTimer = startBappHisenseSyncScheduler()
 
 process.on('SIGINT', async () => {
   clearInterval(bappValidationTimer)
+  clearInterval(bappHisenseSyncTimer)
   await pool.end()
   process.exit(0)
 })

@@ -6,6 +6,49 @@ const sidebarOpen = ref(false)
 const config = useRuntimeConfig()
 const loggingOut = ref(false)
 const logoutError = ref('')
+type BappNotification = { id: number; idTransaksi: string; namaSekolah: string | null; npsn: string }
+const bappNotifications = ref<BappNotification[]>([])
+const notificationError = ref('')
+const acknowledgingNotifications = ref(false)
+const notificationDialog = ref<HTMLDivElement | null>(null)
+const notificationCloseButton = ref<HTMLButtonElement | null>(null)
+let notificationTimer: ReturnType<typeof setInterval> | undefined
+let notificationRequest = 0
+async function loadBappNotifications() {
+  if (authUser.value?.role !== 'Internal' || acknowledgingNotifications.value) return
+  const request = ++notificationRequest
+  try {
+    const result = await $fetch<{ notifications: BappNotification[] }>('/api/bapp-review/notifications', { baseURL: config.public.apiBase, credentials: 'include' })
+    if (request === notificationRequest && !acknowledgingNotifications.value) bappNotifications.value = result.notifications
+  } catch { /* Coba lagi pada interval berikutnya. */ }
+}
+async function acknowledgeBappNotifications(openBapp = false) {
+  if (acknowledgingNotifications.value || !bappNotifications.value.length) return
+  acknowledgingNotifications.value = true
+  notificationRequest++
+  notificationError.value = ''
+  try {
+    await $fetch('/api/bapp-review/notifications/read', { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { ids: bappNotifications.value.map(item => item.id) } })
+    bappNotifications.value = []
+    if (openBapp) await navigateTo('/cek-bapp')
+  } catch { notificationError.value = 'Notifikasi belum dapat ditutup. Coba lagi.' }
+  finally { acknowledgingNotifications.value = false }
+}
+watch(() => bappNotifications.value.length, (count, previous) => { if (count && !previous) nextTick(() => notificationCloseButton.value?.focus()) })
+function onNotificationKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') { event.preventDefault(); void acknowledgeBappNotifications(false); return }
+  if (event.key !== 'Tab') return
+  const buttons = notificationDialog.value?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
+  if (!buttons?.length) return
+  if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons[buttons.length - 1]?.focus() }
+  else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) { event.preventDefault(); buttons[0]?.focus() }
+}
+onMounted(() => {
+  if (authUser.value?.role !== 'Internal') return
+  void loadBappNotifications()
+  notificationTimer = setInterval(() => { void loadBappNotifications() }, 30_000)
+})
+onUnmounted(() => { if (notificationTimer !== undefined) clearInterval(notificationTimer) })
 const logout = async () => {
   if (loggingOut.value) return
   loggingOut.value = true
@@ -29,6 +72,28 @@ const navClass = (path: string) => (path === '/hisense' ? route.path.startsWith(
 
 <template>
   <div class="min-h-screen bg-canvas text-ink">
+    <template v-if="authUser?.role === 'Internal'">
+      <header class="border-b border-stone-200 bg-stone-50">
+        <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <p class="font-semibold tracking-tight">Dashboard Pemantauan Digitalisasi Pembelajaran SMK</p>
+          <div class="flex items-center gap-3 text-sm">
+            <span class="text-muted">{{ authUser.username }}</span>
+            <button type="button" :disabled="loggingOut" class="rounded-theme border border-stone-300 px-3 py-2 font-medium hover:bg-stone-200 disabled:opacity-50" @click="logout">
+              <AppIcon :name="loggingOut ? 'loading' : 'logout'" :class="{ 'animate-spin': loggingOut }" class="mr-1 h-4 w-4" />{{ loggingOut ? 'Keluar…' : 'Logout' }}
+            </button>
+          </div>
+        </div>
+        <nav aria-label="Menu Internal" class="flex gap-2 overflow-x-auto px-5 pb-4 text-sm sm:px-8">
+          <NuxtLink to="/" :class="route.path === '/' ? 'bg-white text-ink shadow-sm' : 'text-muted hover:bg-white'" class="inline-flex shrink-0 items-center gap-2 rounded-theme px-4 py-2.5 font-medium"><AppIcon name="home" class="h-4 w-4" />Dashboard</NuxtLink>
+          <NuxtLink to="/bapp-fisik" :class="route.path === '/bapp-fisik' ? 'bg-white text-ink shadow-sm' : 'text-muted hover:bg-white'" class="inline-flex shrink-0 items-center gap-2 rounded-theme px-4 py-2.5 font-medium"><AppIcon name="package" class="h-4 w-4" />BAPP Fisik</NuxtLink>
+          <NuxtLink to="/cek-bapp" :class="route.path === '/cek-bapp' ? 'bg-white text-ink shadow-sm' : 'text-muted hover:bg-white'" class="inline-flex shrink-0 items-center gap-2 rounded-theme px-4 py-2.5 font-medium"><AppIcon name="clipboard-check" class="h-4 w-4" />Cek BAPP</NuxtLink>
+          <NuxtLink to="/rekap-scan" :class="route.path === '/rekap-scan' ? 'bg-white text-ink shadow-sm' : 'text-muted hover:bg-white'" class="inline-flex shrink-0 items-center gap-2 rounded-theme px-4 py-2.5 font-medium"><AppIcon name="chart" class="h-4 w-4" />Rekap Scan BAPP</NuxtLink>
+        </nav>
+        <p v-if="logoutError" role="alert" class="px-5 pb-3 text-xs text-red-700 sm:px-8">{{ logoutError }}</p>
+      </header>
+      <div><slot /></div>
+    </template>
+    <template v-else>
     <div v-if="sidebarOpen" class="fixed inset-0 z-30 bg-stone-950/30 lg:hidden" @click="sidebarOpen = false" />
     <aside
       class="fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col border-r border-stone-200 bg-stone-50 transition-transform lg:translate-x-0"
@@ -52,9 +117,6 @@ const navClass = (path: string) => (path === '/hisense' ? route.path.startsWith(
             <AppIcon name="command" class="h-3 w-3" /> K
           </span></button></div>
       <nav class="flex flex-col gap-1 px-4 py-2 text-sm">
-        <NuxtLink v-if="authUser?.role === 'Internal'" to="/bapp-fisik" :class="navClass('/bapp-fisik')" @click="sidebarOpen = false">
-          <span class="w-5 text-center text-sky-500"><AppIcon name="school" /></span>Bapp Fisik
-        </NuxtLink>
         <NuxtLink v-if="authUser?.role !== 'Internal'" to="/" :class="navClass('/')" @click="sidebarOpen = false"><span class="w-5 text-center text-sky-500">
             <AppIcon name="home" />
           </span>Dashboard</NuxtLink>
@@ -62,8 +124,11 @@ const navClass = (path: string) => (path === '/hisense' ? route.path.startsWith(
             class="w-5 text-center text-sky-500">
             <AppIcon name="truck" />
           </span>Data Hisense</NuxtLink>
-        <NuxtLink v-if="authUser?.role === 'Admin' || authUser?.role === 'Internal'" to="/rekap-scan" :class="navClass('/rekap-scan')" @click="sidebarOpen = false">
+        <NuxtLink v-if="authUser?.role === 'Admin'" to="/rekap-scan" :class="navClass('/rekap-scan')" @click="sidebarOpen = false">
           <span class="w-5 text-center text-sky-500"><AppIcon name="chart" /></span>Rekap Scan BAPP
+        </NuxtLink>
+        <NuxtLink v-if="authUser?.role === 'Admin'" to="/assign-npsn-bapp" :class="navClass('/assign-npsn-bapp')" @click="sidebarOpen = false">
+            <span class="w-5 text-center text-sky-500"><AppIcon name="school" /></span>Kelola BAPP
         </NuxtLink>
         <NuxtLink v-if="authUser?.role === 'Admin'" to="/users" :class="navClass('/users')" @click="sidebarOpen = false">
           <span class="w-5 text-center text-sky-500"><AppIcon name="users" /></span>Kelola User
@@ -103,6 +168,15 @@ const navClass = (path: string) => (path === '/hisense' ? route.path.startsWith(
         <AppIcon name="menu" />
       </button>
       <slot />
+    </div>
+    </template>
+    <div v-if="authUser?.role === 'Internal' && bappNotifications.length" ref="notificationDialog" role="alertdialog" aria-modal="true" aria-labelledby="bapp-notification-title" class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4" @keydown="onNotificationKeydown">
+      <div class="w-full max-w-xl overflow-hidden rounded-theme bg-white shadow-2xl">
+        <div class="flex items-start gap-3 border-b border-stone-200 bg-sky-50 px-5 py-5"><span class="grid h-11 w-11 shrink-0 place-items-center rounded-theme bg-sky-700 text-white"><AppIcon name="bell" /></span><div><h2 id="bapp-notification-title" class="text-lg font-semibold text-ink">Terdapat {{ bappNotifications.length }} BAPP baru yang diterapkan untuk anda</h2><p class="mt-1 text-sm text-muted">Daftar sekolah yang baru masuk ke alokasi reviu Anda.</p></div></div>
+        <ul class="max-h-72 divide-y divide-stone-100 overflow-y-auto px-5"><li v-for="item in bappNotifications" :key="item.id" class="flex items-start gap-3 py-3"><AppIcon name="school" class="mt-0.5 h-4 w-4 text-sky-700" /><div class="min-w-0"><p class="font-medium text-ink">{{ item.namaSekolah || 'Nama sekolah belum tersedia' }}</p><p class="text-xs text-muted">NPSN {{ item.npsn }} · {{ item.idTransaksi }}</p></div></li></ul>
+        <p v-if="notificationError" role="alert" class="px-5 pt-3 text-sm text-red-700">{{ notificationError }}</p>
+        <div class="flex flex-wrap justify-end gap-2 border-t border-stone-200 px-5 py-4"><button ref="notificationCloseButton" type="button" :disabled="acknowledgingNotifications" class="rounded-theme border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50" @click="acknowledgeBappNotifications(false)">Tutup</button><button type="button" :disabled="acknowledgingNotifications" class="inline-flex items-center gap-2 rounded-theme bg-sky-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" @click="acknowledgeBappNotifications(true)">Lihat Cek BAPP<AppIcon name="arrow-right" class="h-4 w-4" /></button></div>
+      </div>
     </div>
   </div>
 </template>

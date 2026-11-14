@@ -50,11 +50,14 @@ try {
   const internalAccount = (await internalMe.json() as { user: { id: number; role: string; province: null } }).user
   assert.equal(internalAccount.role, 'Internal')
   assert.equal(internalAccount.province, null)
-  for (const path of ['/', '/hisense', '/hisense/example', '/users', '/activity']) {
+  for (const path of ['/hisense', '/hisense/example', '/users', '/activity']) {
     const redirect = await fetch(`${base}${path}`, { headers: { cookie: internal }, redirect: 'manual' })
     assert.equal(redirect.status, 302, path)
-    assert.equal(redirect.headers.get('location'), '/bapp-fisik', path)
+    assert.equal(redirect.headers.get('location'), '/', path)
   }
+  const internalDashboard = await request('/', 'GET', undefined, internal)
+  assert.equal(internalDashboard.status, 200)
+  assert.ok((await internalDashboard.text()).includes('Ringkasan Cek BAPP'))
   const internalPage = await request('/bapp-fisik', 'GET', undefined, internal)
   assert.equal(internalPage.status, 200)
   const internalHtml = await internalPage.text()

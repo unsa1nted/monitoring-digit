@@ -83,7 +83,7 @@ onUnmounted(() => { clearInterval(timer); requestVersion++ })
 
 <template>
   <AppShell>
-    <header class="border-b border-stone-200 bg-white px-5 pb-6 pt-20 sm:px-8 lg:pt-6">
+    <header class="border-b border-stone-200 bg-white px-5 pb-6 sm:px-8" :class="authUser?.role === 'Internal' ? 'pt-6' : 'pt-20 lg:pt-6'">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div><h1 class="text-2xl font-semibold">Rekap Scan BAPP</h1><p class="mt-2 text-sm text-muted">Seluruh serial number terscan, lokasi penyimpanan, dan kelengkapan BAPP sekolah.</p></div>
         <button type="button" :disabled="loading || exporting || !!error || !report" class="inline-flex items-center gap-2 rounded-theme bg-ink px-4 py-3 text-sm font-medium text-white disabled:opacity-50" @click="exportExcel"><AppIcon :name="exporting ? 'loading' : 'save'" :class="{ 'animate-spin': exporting }" />{{ exporting ? 'Menyiapkan Excel…' : 'Export Excel' }}</button>

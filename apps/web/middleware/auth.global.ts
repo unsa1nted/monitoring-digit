@@ -16,10 +16,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
   useState('auth-user').value = result.user
   if (result.user.role === 'Internal') {
-    if (!['/bapp-fisik', '/rekap-scan'].includes(to.path)) return navigateTo('/bapp-fisik', { replace: true })
+    if (!['/', '/bapp-fisik', '/cek-bapp', '/rekap-scan'].includes(to.path)) return navigateTo('/', { replace: true })
     return
   }
-  if (to.path === '/bapp-fisik') return navigateTo('/')
+  if (to.path === '/bapp-fisik' || to.path === '/cek-bapp') return navigateTo('/')
   if (to.path === '/rekap-scan' && result.user.role !== 'Admin') return navigateTo('/')
+  if (to.path === '/assign-npsn-bapp' && result.user.role !== 'Admin') return navigateTo('/')
   if (to.path === '/users' && result.user.role !== 'Admin') return navigateTo('/')
 })

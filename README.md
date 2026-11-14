@@ -118,3 +118,4 @@ creates temporary accounts and removes them afterwards; existing accounts are un
 ## Hisense GET integration
 
 Set the Direktorat SMK credentials in `.env` using `HISENSE_SMK_USERNAME` and `HISENSE_SMK_PASSWORD`. The `/hisense` page only reads the Hisense SMK list and detail data; no approve, reject, webhook, or other POST action is exposed. Admin sees all returned SMK data, while Dinas users are filtered by their `province` value in MySQL.
+The BAPP Excel sync logs in through Hisense `/hi-auth/login` with the same SMK credentials. The API renews its export token automatically.

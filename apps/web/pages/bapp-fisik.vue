@@ -288,7 +288,7 @@ function receiveBarcode() {
 
 <template>
   <AppShell>
-    <header class="border-b border-stone-200 bg-white px-5 pb-6 pt-20 sm:px-8 lg:pt-6">
+    <header class="border-b border-stone-200 bg-white px-5 pb-6 pt-6 sm:px-8">
       <div class="w-full">
         <p class="text-xs font-semibold uppercase tracking-wider text-sky-600">Internal</p>
         <h1 class="mt-2 text-2xl font-semibold tracking-tight">Bapp Fisik</h1>

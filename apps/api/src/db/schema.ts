@@ -1,4 +1,4 @@
-import { mysqlTable, varchar, int, timestamp, mysqlEnum, text, bigint, index, json, uniqueIndex } from 'drizzle-orm/mysql-core'
+import { mysqlTable, varchar, int, timestamp, mysqlEnum, text, bigint, index, json, uniqueIndex, foreignKey } from 'drizzle-orm/mysql-core'
 
 export const users = mysqlTable('users', {
   id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
@@ -8,6 +8,53 @@ export const users = mysqlTable('users', {
   province: varchar('province', { length: 120 }),
   createdAt: timestamp('created_at').defaultNow().notNull()
 })
+
+export const petugasReviewer = mysqlTable('petugas_reviewer', {
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+  namaPetugas: varchar('nama_petugas', { length: 120 }).notNull(),
+  userPetugas: varchar('user_petugas', { length: 80 }).notNull().unique(),
+  alokasiPersen: int('alokasi_persen')
+})
+
+export const bappReviewerAssignments = mysqlTable('bapp_reviewer_assignments', {
+  npsn: varchar('npsn', { length: 20 }).primaryKey(),
+  userPetugas: varchar('user_petugas', { length: 80 }).notNull()
+}, table => ({ reviewer: foreignKey({ columns: [table.userPetugas], foreignColumns: [petugasReviewer.userPetugas], name: 'bapp_reviewer_petugas_fk' }) }))
+
+export const masterBapp = mysqlTable('master_bapp', {
+id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+idTransaksi: varchar('id_transaksi', { length: 80 }).notNull().unique(),
+  sudahAdaRevisi: mysqlEnum('sudah_ada_revisi', ['Ya', 'Tidak']).notNull(),
+  statusProgress: varchar('status_progress', { length: 80 }),
+  npsn: varchar('npsn', { length: 20 }).notNull(),
+  namaSekolah: varchar('nama_sekolah', { length: 255 }),
+  propinsi: varchar('propinsi', { length: 120 }),
+  kabupatenKota: varchar('kabupaten_kota', { length: 120 }),
+  kecamatan: varchar('kecamatan', { length: 120 }),
+  serialNumber: varchar('serial_number', { length: 160 }),
+  tag: text('tag'),
+  petugasReviu: varchar('petugas_reviu', { length: 80 }).notNull(),
+  fotoPlangSekolah: mysqlEnum('foto_plang_sekolah', ['Ya', 'Tidak']),
+  fotoBoxPic: mysqlEnum('foto_box_pic', ['Ya', 'Tidak']),
+  fotoKelengkapanUnit: mysqlEnum('foto_kelengkapan_unit', ['Ya', 'Tidak']),
+  fotoProsesInstalasi: mysqlEnum('foto_proses_instalasi', ['Ya', 'Tidak']),
+  fotoKesesuaianSerialNumber: mysqlEnum('foto_kesesuaian_serial_number', ['Ya', 'Tidak']),
+  fotoTrainingRumahPendidikan: mysqlEnum('foto_training_rumah_pendidikan', ['Ya', 'Tidak']),
+  fotoBapp1: mysqlEnum('foto_bapp_1', ['Ya', 'Tidak']),
+  fotoBapp2: mysqlEnum('foto_bapp_2', ['Ya', 'Tidak']),
+  hasilAkhirReviu: mysqlEnum('hasil_akhir_reviu', ['Sesuai', 'Tidak Sesuai']),
+  catatanPetugas: text('catatan_petugas')
+})
+
+export const bappReviewNotifications = mysqlTable('bapp_review_notifications', {
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+  idTransaksi: varchar('id_transaksi', { length: 80 }).notNull().unique(),
+  userPetugas: varchar('user_petugas', { length: 80 }).notNull(),
+  namaSekolah: varchar('nama_sekolah', { length: 255 }),
+  npsn: varchar('npsn', { length: 20 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  readAt: timestamp('read_at')
+}, table => ({ reviewerUnread: index('bapp_review_notifications_reviewer_unread').on(table.userPetugas, table.readAt) }))
 
 export const bappStorages = mysqlTable('bapp_storages', {
   id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
