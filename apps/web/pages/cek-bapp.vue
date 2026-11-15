@@ -13,7 +13,8 @@ type Transaction = {
   serial_number?: string | null
   jumlah_pid?: number | null
   tag_revisi?: string | string[] | null
-  riwayat_revisi_moe?: unknown[] | null
+  catatan_revisi?: string | null
+  riwayat_revisi_moe?: Array<{ catatan_rejeksi?: string | null }> | null
   riwayat_revisi_apip?: unknown[] | null
   npsn_info?: { npsn?: string; nama_sekolah?: string | null; propinsi?: string | null; kabupaten_kota?: string | null; kecamatan?: string | null; alamat?: string; qty?: number | null } | null
   foto_instalasi?: Record<string, string | null> | null
@@ -102,6 +103,7 @@ const detailError = ref('')
 const photoIndex = ref(0)
 const photoViewer = ref<HTMLDivElement | null>(null)
 const photoViewport = ref<HTMLDivElement | null>(null)
+const photoNoteInput = ref<HTMLInputElement | null>(null)
 const photoZoom = ref(1)
 const photoFullscreen = ref(false)
 const imageLoading = ref(false)
@@ -117,6 +119,11 @@ const hisenseReviewStatus = computed(() => {
   if (item.approved_by_moe || item.approved_by_apip) return 'Sudah Disetujui'
   return null
 })
+const showPreviousRejection = computed(() => detailMatchesSerial.value && (hisenseReviewStatus.value === 'Sedang Ditolak' || (reviewing.value?.review?.sudahAdaRevisi === 'Ya' && !lockedReviewStatuses.has(detail.value?.kode_status_progress ?? ''))))
+const previousRejectionNote = computed(() => detail.value?.catatan_revisi?.trim()
+  || detail.value?.riwayat_revisi_moe?.findLast(item => item.catatan_rejeksi?.trim())?.catatan_rejeksi?.trim()
+  || reviewing.value?.review?.catatanPetugas?.trim()
+  || 'Catatan belum tersedia.')
 const currentPhotoUrl = computed(() => detailMatchesSerial.value ? photo(detail.value, currentPhoto.value.key) : null)
 watch([photoIndex, selectedSerial, detail], () => {
   imageLoading.value = Boolean(currentPhotoUrl.value)
@@ -141,6 +148,7 @@ const photoNoteError = ref('')
 const saving = ref(false)
 const reviewError = ref('')
 const reviewMessage = ref('')
+let reviewMessageTimer: ReturnType<typeof setTimeout> | undefined
 const hasRejectedPhoto = computed(() => photoFields.some(field => reviewForm[field.reviewKey] === 'Tidak'))
 const rejectedPhotoNotes = computed(() => compilePhotoNotes(photoNotes, photoFields.filter(field => reviewForm[field.reviewKey] === 'Tidak')))
 const decision = ref<'approve' | 'reject' | null>(null)
@@ -196,6 +204,20 @@ function selectPhoto(index: number) {
   }
   photoNoteError.value = ''
   photoIndex.value = index
+}
+function advancePhoto() { if (photoIndex.value < photoFields.length - 1) selectPhoto(photoIndex.value + 1) }
+function setPhotoVerdict(verdict: Verdict) {
+  const field = currentPhoto.value
+  reviewForm[field.reviewKey] = verdict
+  photoNoteError.value = ''
+  if (verdict === 'Ya' || photoNotes[field.reviewKey].trim()) advancePhoto()
+  else nextTick(() => photoNoteInput.value?.focus())
+}
+function advanceAfterRejectionNote() {
+  if (reviewForm[currentPhoto.value.reviewKey] === 'Tidak' && photoNotes[currentPhoto.value.reviewKey].trim()) advancePhoto()
+}
+function onRejectionNoteBlur(event: FocusEvent) {
+  if (!(event.relatedTarget instanceof HTMLButtonElement)) advanceAfterRejectionNote()
 }
 function onPhotoLoad() {
   imageLoading.value = false
@@ -264,12 +286,15 @@ async function saveReview() {
   reviewError.value = ''
   try {
     await $fetch(`/api/bapp-review/${encodeURIComponent(id)}`, { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { ...reviewForm, catatanPetugas, action, rejectionReasons: selectedReasons.value, rejectionNote: rejectionText } })
-    await Promise.all([refresh(), refreshSummary()])
     closeReview()
     reviewMessage.value = `Transaksi ${id} ${action === 'approve' ? 'disetujui' : 'ditolak'} di Hisense.`
+    if (reviewMessageTimer) clearTimeout(reviewMessageTimer)
+    reviewMessageTimer = setTimeout(() => { reviewMessage.value = '' }, 7000)
+    void Promise.all([refresh(), refreshSummary()]).catch(console.error)
   } catch (error: any) { reviewError.value = error?.data?.message ?? 'Reviu gagal disimpan. Coba lagi.' }
   finally { saving.value = false }
 }
+onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
 </script>
 
 <template>
@@ -308,8 +333,12 @@ async function saveReview() {
       <p v-if="summaryError" role="alert"
         class="rounded-theme border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">Ringkasan BAPP belum dapat
         dimuat.</p>
-      <p v-if="reviewMessage" role="status"
-        class="rounded-theme border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">{{ reviewMessage }}</p>
+      <div v-if="reviewMessage" role="status"
+        class="fixed right-4 top-4 z-[70] flex max-w-sm items-start gap-3 rounded-theme border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800 shadow-xl">
+        <AppIcon name="circle-check" class="mt-0.5 h-5 w-5 shrink-0" />
+        <span>{{ reviewMessage }}</span>
+        <button type="button" aria-label="Tutup notifikasi" class="ml-auto shrink-0" @click="reviewMessage = ''"><AppIcon name="close" class="h-4 w-4" /></button>
+      </div>
       <div>
         <div class="mb-4 flex items-center gap-2"><span
             class="grid h-9 w-9 place-items-center rounded-theme bg-sky-100 text-sky-700">
@@ -348,8 +377,8 @@ async function saveReview() {
         </div>
       </div>
       <div v-if="reviewing" ref="reviewModal" role="dialog" aria-modal="true" aria-labelledby="review-title"
-        class="fixed inset-0 z-50 h-dvh w-screen bg-canvas text-ink" @keydown="onModalKeydown">
-        <form class="flex h-full flex-col" @submit.prevent>
+        class="fixed inset-0 z-50 h-dvh w-screen overflow-y-auto bg-canvas text-ink" @keydown="onModalKeydown">
+        <form class="flex min-h-full flex-col" @submit.prevent>
           <header
             class="flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-5 py-3 shadow-sm">
             <div class="flex min-w-0 items-center gap-3"><span
@@ -370,8 +399,8 @@ async function saveReview() {
             </button>
           </header>
           <div
-            class="grid min-h-0 flex-1 grid-rows-2 lg:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)] lg:grid-rows-1">
-            <section class="flex min-h-0 flex-col bg-white" aria-label="Foto reviu">
+            class="grid min-h-[680px] flex-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
+            <section class="flex min-h-[620px] flex-col bg-white" aria-label="Foto reviu">
               <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden bg-stone-950 p-4 text-white">
                 <div class="flex items-center justify-between gap-3">
                   <h3 class="inline-flex items-center gap-2 text-base font-semibold">
@@ -445,24 +474,25 @@ async function saveReview() {
                     :aria-pressed="reviewForm[currentPhoto.reviewKey] === 'Ya'"
                     :class="reviewForm[currentPhoto.reviewKey] === 'Ya' ? 'border-teal-700 bg-teal-700 text-white' : 'border-teal-700 bg-white text-teal-700 hover:bg-teal-50'"
                     class="inline-flex items-center gap-2 rounded-theme border px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
-                    @click="reviewForm[currentPhoto.reviewKey] = 'Ya'; photoNoteError = ''">
+                    @click="setPhotoVerdict('Ya')">
                     <AppIcon name="circle-check" class="h-4 w-4" />Sesuai
                   </button>
                   <button type="button" :disabled="!detailMatchesSerial"
                     :aria-pressed="reviewForm[currentPhoto.reviewKey] === 'Tidak'"
                     :class="reviewForm[currentPhoto.reviewKey] === 'Tidak' ? 'border-red-700 bg-red-700 text-white' : 'border-red-700 bg-white text-red-700 hover:bg-red-50'"
                     class="inline-flex items-center gap-2 rounded-theme border px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
-                    @click="reviewForm[currentPhoto.reviewKey] = 'Tidak'">
+                    @click="setPhotoVerdict('Tidak')">
                     <AppIcon name="circle-x" class="h-4 w-4" />Tidak Sesuai
                   </button>
                 </div>
                 <div v-if="reviewForm[currentPhoto.reviewKey] === 'Tidak'" class="space-y-1"><label for="catatan-foto"
                     class="block text-sm font-medium">Catatan {{ currentPhoto.noteLabel }} <span
-                      class="text-red-700">*</span></label><input id="catatan-foto"
+                      class="text-red-700">*</span></label><input id="catatan-foto" ref="photoNoteInput"
                     v-model="photoNotes[currentPhoto.reviewKey]" type="text" maxlength="500"
                     :aria-invalid="Boolean(photoNoteError)"
                     class="w-full rounded-theme border border-stone-300 bg-white px-3 py-2 text-sm"
-                    placeholder="Jelaskan alasan tidak sesuai" @input="photoNoteError = ''">
+                    placeholder="Jelaskan alasan tidak sesuai" @input="photoNoteError = ''" @blur="onRejectionNoteBlur" @keydown.enter.prevent="advanceAfterRejectionNote">
+                  <p class="text-xs text-muted">Setelah catatan diisi, tekan Enter atau klik di luar untuk lanjut.</p>
                   <p v-if="photoNoteError" role="alert" class="text-xs text-red-700">{{ photoNoteError }}</p>
                 </div>
                 <div class="flex items-center justify-between gap-3">
@@ -479,7 +509,7 @@ async function saveReview() {
                 </div>
               </div>
             </section>
-            <aside class="min-h-0 overflow-y-auto bg-white p-5" aria-label="Detail data Hisense">
+            <aside class="min-h-0 bg-white p-5 lg:overflow-y-auto" aria-label="Detail data Hisense">
               <h3 class="inline-flex items-center gap-2 text-lg font-semibold">
                 <AppIcon name="school" class="text-sky-700" />Detail Data Hisense
               </h3>
@@ -487,6 +517,10 @@ async function saveReview() {
               <span v-if="hisenseReviewStatus"
                 :class="hisenseReviewStatus === 'Sudah Disetujui' ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'"
                 class="mt-3 inline-flex rounded-theme px-3 py-1 text-xs font-semibold">{{ hisenseReviewStatus }}</span>
+              <div v-if="showPreviousRejection" class="mt-4 rounded-theme border border-red-300 bg-red-50 p-3 text-red-800">
+                <p class="flex items-center gap-2 text-sm font-semibold"><AppIcon name="circle-x" class="h-4 w-4 shrink-0" />Catatan penolakan/revisi sebelumnya:</p>
+                <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ previousRejectionNote }}</p>
+              </div>
               <p v-if="detailLoading" role="status" class="mt-5 text-sm text-muted">Sedang memuat detail Hisense…</p>
               <p v-if="detailError" role="alert" class="mt-5 text-sm text-red-700">{{ detailError }}</p>
               <dl v-if="detailMatchesSerial" class="mt-5 divide-y divide-stone-100 text-sm">
@@ -513,8 +547,8 @@ async function saveReview() {
         </form>
         <div v-if="decision" ref="confirmationModal" role="alertdialog" aria-modal="true"
           aria-labelledby="decision-title"
-          class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-          <div class="w-full max-w-xl space-y-4 rounded-theme bg-white p-5 shadow-xl">
+          class="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/60 p-4">
+          <div class="max-h-[calc(100dvh-2rem)] w-full max-w-xl space-y-4 overflow-y-auto rounded-theme bg-white p-5 shadow-xl">
             <h3 id="decision-title" class="flex items-center gap-2 text-lg font-semibold">
               <AppIcon :name="decision === 'approve' ? 'circle-check' : 'circle-x'"
                 :class="decision === 'approve' ? 'text-teal-700' : 'text-red-700'" />{{ decision === 'approve' ?
