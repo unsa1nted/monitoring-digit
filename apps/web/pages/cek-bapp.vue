@@ -119,7 +119,6 @@ const hisenseReviewStatus = computed(() => {
   if (item.approved_by_moe || item.approved_by_apip) return 'Sudah Disetujui'
   return null
 })
-const previousRejectionNote = computed(() => detailMatchesSerial.value ? detail.value?.catatan_revisi?.trim() ?? '' : '')
 const currentPhotoUrl = computed(() => detailMatchesSerial.value ? photo(detail.value, currentPhoto.value.key) : null)
 watch([photoIndex, selectedSerial, detail], () => {
   imageLoading.value = Boolean(currentPhotoUrl.value)
@@ -424,11 +423,11 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
                 </div>
                 <div ref="photoViewer" class="relative min-h-0 flex-1 overflow-hidden rounded-theme bg-stone-900"
                   @fullscreenchange="onPhotoFullscreenChange">
-                  <div ref="photoViewport" class="h-full w-full overflow-auto">
+                  <div ref="photoViewport" class="flex h-full w-full overflow-auto p-4 sm:p-8">
                     <img v-if="currentPhotoUrl && !imageError" :key="`${selectedSerial}:${currentPhoto.key}`"
                       :src="currentPhotoUrl" :alt="`${currentPhoto.label} · ${selectedSerial}`"
-                      :style="{ width: `${photoZoom * 100}%`, height: `${photoZoom * 100}%` }"
-                      class="block max-w-none object-contain" :class="imageLoading ? 'opacity-0' : 'opacity-100'"
+                      :style="{ width: `${photoZoom * 100}%`, height: `${photoZoom * 100}%`, maxWidth: `${photoZoom * 840}px`, maxHeight: `${photoZoom * 560}px` }"
+                      class="m-auto block shrink-0 object-contain" :class="imageLoading ? 'opacity-0' : 'opacity-100'"
                       @load="onPhotoLoad" @error="imageLoading = false; imageError = true">
                   </div>
                   <div
@@ -513,9 +512,9 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
               <span v-if="hisenseReviewStatus"
                 :class="hisenseReviewStatus === 'Sudah Disetujui' ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'"
                 class="mt-3 inline-flex rounded-theme px-3 py-1 text-xs font-semibold">{{ hisenseReviewStatus }}</span>
-              <div v-if="previousRejectionNote" class="mt-4 rounded-theme border border-red-300 bg-red-50 p-3 text-red-800">
+              <div v-if="detailMatchesSerial && (hisenseReviewStatus === 'Sedang Ditolak' || reviewing?.review?.sudahAdaRevisi === 'Ya' || detail?.catatan_revisi?.trim())" class="mt-4 rounded-theme border border-red-300 bg-red-50 p-3 text-red-800">
                 <p class="flex items-center gap-2 text-sm font-semibold"><AppIcon name="circle-x" class="h-4 w-4 shrink-0" />Catatan penolakan/revisi sebelumnya:</p>
-                <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ previousRejectionNote }}</p>
+                <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ detail?.catatan_revisi?.trim() || 'Catatan revisi tidak tersedia di Hisense.' }}</p>
               </div>
               <p v-if="detailLoading" role="status" class="mt-5 text-sm text-muted">Sedang memuat detail Hisense…</p>
               <p v-if="detailError" role="alert" class="mt-5 text-sm text-red-700">{{ detailError }}</p>

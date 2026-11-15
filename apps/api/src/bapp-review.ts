@@ -523,7 +523,7 @@ export const bappReview = new Elysia()
     if (!stored) { context.set.status = 404; return { message: 'Transaksi belum ada di master BAPP.' } }
     if (stored.petugasReviu.toLowerCase() !== user.username.toLowerCase()) { context.set.status = 403; return { message: 'Transaksi bukan milik petugas Anda.' } }
     try {
-      const transaction = await getHisenseTransaction(id, 'smk')
+      const transaction = await getHisenseTransaction(id, 'smk', { bypassCache: true })
       if (!transaction || transaction.npsn_info?.npsn?.trim() !== stored.npsn) {
         context.set.status = 404
         return { message: 'Detail transaksi tidak ditemukan di Hisense.' }
