@@ -6,6 +6,11 @@ _Last updated: 2026-11-15_
 Nuxt dashboard + Elysia API + MySQL database.
 
 ## Recent issues
+- [OPEN] #0053 Reviewer MOE remote tetap direktoratsmk dengan token sistem; perlu token Hisense per petugas dan fitur admin ubah password beberapa akun aplikasi. [apps/api/src/hisense.ts:61] (open)
+  - Partial attempt: Login reviewer memakai password aplikasi untuk token StaffSMK, reviu PUT memakai token sesi; admin bulk password per reviewer divalidasi Hisense lalu DB transaction. Mock approve/reject dan build API/web lulus; belum uji remote live/DB. [apps/api/src/hisense.ts:64]
+- [OPEN] #0052 Reviewer MOE tetap direktoratsmk setelah reviu memakai token sistem meski payload reviewer_name adalah username petugas login. [apps/api/src/hisense.ts:61] (open)
+  - Partial attempt: Bandingkan log persetujuan aplikasi terbaru dengan GET Hisense: 1 persetujuan ditemukan, approved_by_moe tidak cocok username login dan bernilai akun integrasi direktoratsmk. Payload reviewer_name tidak menentukan field itu. [apps/api/src/hisense.ts:61]
+  - Partial attempt: Batalkan login Hisense per petugas; kembali ke token sistem dan reviewer_name=username login. Mock review, build API/web lulus; Hisense remote sebelumnya tetap menyimpan direktoratsmk. [apps/api/src/hisense.ts:61]
 - [DONE] #0051 Penolakan Hisense perlu memakai PUT /hi-transaksi/alokasi/review/:id dengan tag_revisi string; contoh memakai token StaffSMK, sementara aplikasi memakai token Direktorat SMK. [apps/api/src/hisense.ts:61] (fixed)
 - [DONE] #0050 Perlu memastikan Reviewer MOE Hisense cocok dengan petugas yang menyetujui, serta menyimpan riwayat sinkron Excel otomatis dengan waktu dan jumlah alokasi per petugas. [apps/api/src/bapp-review.ts] (fixed)
 - [DONE] #0049 Penolakan BAPP ke endpoint direktorat Hisense gagal: column a.kode_direktorat does not exist. [apps/api/src/hisense.ts:61] (fixed)
@@ -33,11 +38,9 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Tabel Petugas Reviewer mengurutkan peringkat berdasarkan jumlah sudahDiperiksa; jumlah alokasi tetap ditampilkan sebagai statistik terpisah [apps/api/src/bapp-review.ts:426]
 - Tabel Petugas Reviewer memuat ulang /api/bapp-dashboard tiap 60 detik saat halaman terbuka; cap waktu WIB berubah hanya setelah permintaan berhasil [apps/web/pages/index.vue:46]
 - Catat tiap sinkron unduhan Hisense yang berhasil (otomatis/manual) dalam bapp_hisense_sync_runs, termasuk snapshot jumlah alokasi per reviewer; impor file manual tidak masuk riwayat ini. [apps/api/src/db/schema.ts:59]
-- Approve tetap POST /direktorat/approve; reject memakai PUT /hi-transaksi/alokasi/review/:id dengan token hi-auth bawaan sistem, tag_revisi string, dan reviewer_name username login. Hisense dapat menulis reviewer dari identitas token, sehingga nama remote belum terjamin sama. [apps/api/src/hisense.ts:61]
+- Petugas reviewer login aplikasi dengan password yang sama seperti Hisense; API memperoleh token StaffSMK dan menyimpannya sementara per sesi. Approve/reject memakai token itu. Admin dapat menyamakan password beberapa reviewer setelah validasi Hisense. [apps/api/src/hisense.ts:64]
 
 ## Notes
-- Cek BAPP menampilkan REVISI dari master_bapp.petugas_reviu; tab Ditolak (REVISI) selalu terlihat. Kolom sudah_ada_revisi menampilkan badge biru Tidak dan oranye Revisi Tersedia. [apps/web/pages/cek-bapp.vue:51]
-- Cek BAPP Status Progress kini memakai badge berbeda: Instalasi Selesai biru, Revisi merah, Disetujui hijau, Reviu APIP ungu, Sesuai APIP teal; status lain abu-abu. [apps/web/pages/cek-bapp.vue:59]
 - gotcha: Direktorat Hisense token hanya untuk /direktorat; approve/reject BAPP memakai /hi-auth/login dan PUT /hi-transaksi/alokasi/review/:id [apps/api/src/hisense.ts:61]
 - New feature: feat: Update add BAPP system [apps/api/drizzle/0013_round_quasimodo.sql]
 - New feature: feat: update [apps/api/src/bapp-review.ts]
@@ -46,6 +49,8 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: update [apps/api/src/bapp-review.ts]
 - New feature: feat : Update [apps/api/drizzle/0020_busy_starbolt.sql]
+- New feature: feat: update [apps/api/scripts/test-hisense-export.ts]
+- gotcha: Token Hisense petugas hanya ada di memori proses API; setelah restart API, petugas perlu logout/login lagi sebelum approve atau reject. [apps/api/src/hisense.ts:24]
 
 ## Key files
 - `.env.example`

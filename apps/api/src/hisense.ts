@@ -1,3 +1,5 @@
+import { decodeJwt } from 'jose'
+
 const baseUrl = (process.env.HISENSE_BASE_URL ?? 'https://ifp-api.pyxscreen.co.id/api').replace(/\/$/, '')
 const directorates = ['smk']
 
@@ -19,6 +21,7 @@ export type HisenseTransaction = {
 type TokenState = { token: string; expiresAt: number }
 const tokenCache = new Map<string, TokenState>()
 let exportTokenCache: TokenState | null = null
+const reviewerTokens = new Map<string, TokenState & { username: string }>()
 type ResponseCacheState = { response: HisenseListResponse; expiresAt: number }
 const responseCache = new Map<string, ResponseCacheState>()
 const configuredCacheTtl = Number(process.env.HISENSE_CACHE_TTL_MS ?? 30_000)
@@ -58,24 +61,35 @@ async function adminToken() {
     return payload.token
 }
 
-export async function reviewHisenseAllocation(id: string, body: { kode_status_progress: 'DISETUJUI' | 'REVISI'; reviewer_name: string; catatan_revisi?: string; tag_revisi?: string[] }) {
-  const rejecting = body.kode_status_progress === 'REVISI'
-  let token = rejecting ? await adminToken() : await tokenFor('smk')
-  const request = () => fetch(rejecting ? `${baseUrl}/hi-transaksi/alokasi/review/${encodeURIComponent(id)}` : `${baseUrl}/direktorat/approve`, {
-    method: rejecting ? 'PUT' : 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(rejecting ? { 'x-active-batch': '3' } : {}) },
-    body: JSON.stringify(rejecting
-      ? { kode_status_progress: 'REVISI', catatan_revisi: body.catatan_revisi, tag_revisi: body.tag_revisi?.join(', '), reviewer_name: body.reviewer_name }
-      : { id_transaksi: id, reviewer_name: body.reviewer_name }),
+export async function loginHisenseReviewer(username: string, password: string) {
+  const response = await fetch(`${baseUrl}/hi-auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }), signal: AbortSignal.timeout(30_000) })
+  if (!response.ok) throw new Error(`Login Hisense ${username} gagal (${response.status}). Pastikan password aplikasi sama dengan Hisense.`)
+  const payload = await response.json() as { token?: string }
+  if (!payload.token) throw new Error(`Login Hisense ${username} tidak mengembalikan token.`)
+  let claims: ReturnType<typeof decodeJwt>
+  try { claims = decodeJwt(payload.token) } catch { throw new Error(`Token Hisense ${username} tidak valid.`) }
+  if (typeof claims.username !== 'string' || claims.username.toLowerCase() !== username.toLowerCase() || claims.role !== 'StaffSMK' || !claims.exp || claims.exp * 1000 <= Date.now() + 60_000) {
+    throw new Error(`Akun Hisense ${username} harus StaffSMK dengan username sama dan token aktif.`)
+  }
+  return { token: payload.token, username, expiresAt: claims.exp * 1000 }
+}
+
+export function setHisenseReviewerSession(sessionKey: string, state: Awaited<ReturnType<typeof loginHisenseReviewer>>) { reviewerTokens.set(sessionKey, state) }
+export function clearHisenseReviewerSession(sessionKey: string) { reviewerTokens.delete(sessionKey) }
+
+export async function reviewHisenseAllocation(id: string, body: { kode_status_progress: 'DISETUJUI' | 'REVISI'; reviewer_name: string; catatan_revisi?: string; tag_revisi?: string[] }, sessionKey: string) {
+  const saved = reviewerTokens.get(sessionKey)
+  if (!saved || saved.username.toLowerCase() !== body.reviewer_name.toLowerCase() || saved.expiresAt <= Date.now() + 60_000) throw new Error('Sesi Hisense petugas tidak tersedia. Silakan login kembali.')
+  const response = await fetch(`${baseUrl}/hi-transaksi/alokasi/review/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${saved.token}`, 'Content-Type': 'application/json', 'x-active-batch': '3' },
+    body: JSON.stringify({ kode_status_progress: body.kode_status_progress, reviewer_name: body.reviewer_name,
+      ...(body.kode_status_progress === 'REVISI' ? { catatan_revisi: body.catatan_revisi, tag_revisi: body.tag_revisi?.join(', ') } : {}) }),
     signal: AbortSignal.timeout(90_000)
   })
-  let response = await request()
   if (response.status === 401) {
-    await response.body?.cancel()
-    if (rejecting) exportTokenCache = null
-    else tokenCache.delete('smk')
-    token = rejecting ? await adminToken() : await tokenFor('smk')
-    response = await request()
+    clearHisenseReviewerSession(sessionKey)
+    throw new Error('Sesi Hisense petugas berakhir. Silakan login kembali.')
   }
   const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null
   if (!response.ok || result?.success === false) throw new Error(result?.message || `Reviu Hisense gagal (${response.status}).`)

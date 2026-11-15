@@ -593,7 +593,7 @@ try {
     kode_status_progress: nextStatus,
     reviewer_name: user.username,
     ...(body.action === 'reject' ? { tag_revisi: reasons, catatan_revisi: body.rejectionNote!.trim() } : {})
-  })
+    }, String(context.cookie.monitoring_session?.value ?? ''))
 } catch (error) {
   context.set.status = 502
   return { message: error instanceof Error ? error.message : 'Reviu gagal dikirim ke Hisense.' }

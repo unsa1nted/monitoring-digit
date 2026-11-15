@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from 'elysia'
 import { eq } from 'drizzle-orm'
 import { db } from './db/index.js'
@@ -16,7 +16,7 @@ export type Role = 'Admin' | 'Dinas' | 'Internal'
 export type AuthUser = { id: number; username: string; role: Role; province: string | null }
 
 export async function createSession(user: AuthUser, verifiedPasswordHash: string) {
-  return new SignJWT({ username: user.username, role: user.role, province: user.province, passwordVersion: passwordVersion(verifiedPasswordHash) }).setProtectedHeader({ alg: 'HS256' }).setSubject(String(user.id)).setIssuedAt().setExpirationTime('8h').sign(secret)
+  return new SignJWT({ username: user.username, role: user.role, province: user.province, passwordVersion: passwordVersion(verifiedPasswordHash) }).setProtectedHeader({ alg: 'HS256' }).setSubject(String(user.id)).setJti(randomUUID()).setIssuedAt().setExpirationTime('8h').sign(secret)
 }
 
 const passwordVersion = (hash: string) => createHash('sha256').update(hash).digest('hex')

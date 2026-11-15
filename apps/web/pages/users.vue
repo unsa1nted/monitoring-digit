@@ -3,11 +3,17 @@ type User = { id: number; username: string; role: 'Admin' | 'Dinas' | 'Internal'
 useHead({ title: 'Kelola User | Dashboard Pemantauan Digitalisasi Pembelajaran SMK' })
 const config = useRuntimeConfig()
 const authUser = useState<User | null>('auth-user')
-const { data, pending, error, refresh } = await useFetch<{ data: User[]; provinces: string[] }>('/api/admin/users', {
+const { data, pending, error, refresh } = await useFetch<{ data: User[]; reviewers: string[]; provinces: string[] }>('/api/admin/users', {
   baseURL: config.public.apiBase, credentials: 'include',
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
 const search = ref('')
+const selectedReviewers = reactive<Record<number, string>>({})
+const savingReviewers = ref(false)
+const reviewerError = ref('')
+const reviewerNames = computed(() => new Set((data.value?.reviewers ?? []).map(name => name.toLowerCase())))
+const reviewerUsers = computed(() => (data.value?.data ?? []).filter(user => user.role === 'Internal' && reviewerNames.value.has(user.username.toLowerCase())))
+const selectedCount = computed(() => Object.keys(selectedReviewers).length)
 const filteredUsers = computed(() => (data.value?.data ?? []).filter(user =>
   `${user.username} ${user.role} ${user.province ?? ''}`.toLowerCase().includes(search.value.toLowerCase())
 ))
@@ -77,6 +83,20 @@ async function changePassword() {
   } catch (error) { resetError.value = message(error) }
   finally { resetting.value = false }
 }
+async function saveReviewerPasswords() {
+  if (savingReviewers.value || !selectedCount.value) return
+  reviewerError.value = ''
+  success.value = ''
+  const updates = Object.entries(selectedReviewers).map(([id, password]) => ({ id: Number(id), password }))
+  if (updates.some(update => update.password.length < 8 || update.password.length > 128)) { reviewerError.value = 'Isi password Hisense 8–128 karakter untuk setiap petugas terpilih.'; return }
+  savingReviewers.value = true
+  try {
+    await $fetch('/api/admin/users/batch-passwords', { baseURL: config.public.apiBase, credentials: 'include', method: 'PATCH', body: { updates } })
+    for (const id of Object.keys(selectedReviewers)) delete selectedReviewers[Number(id)]
+    success.value = `Password ${updates.length} petugas berhasil disamakan dengan Hisense. Petugas harus login kembali.`
+  } catch (error) { reviewerError.value = message(error) }
+  finally { savingReviewers.value = false }
+}
 </script>
 
 <template>
@@ -121,6 +141,22 @@ async function changePassword() {
           </form>
         </section>
       </div>
+      <section class="rounded-theme border border-stone-200 bg-white p-6 shadow-card">
+        <h2 class="text-lg font-semibold">Samakan Password Petugas dengan Hisense</h2>
+        <p class="mt-2 text-sm text-muted">Pilih maksimal 20 petugas, lalu isi password Hisense masing-masing. Password diverifikasi ke Hisense sebelum password aplikasi diubah. Semua sesi lama petugas akan berakhir.</p>
+        <form class="mt-5 space-y-4" @submit.prevent="saveReviewerPasswords">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div v-for="user in reviewerUsers" :key="user.id" class="rounded-theme border border-stone-200 p-3">
+              <label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" :checked="user.id in selectedReviewers" :disabled="savingReviewers || (selectedCount >= 20 && !(user.id in selectedReviewers))" @change="($event.target as HTMLInputElement).checked ? selectedReviewers[user.id] = '' : delete selectedReviewers[user.id]">{{ user.username }}</label>
+              <label v-if="user.id in selectedReviewers" :for="`hisense-password-${user.id}`" class="mt-3 block text-xs text-muted">Password Hisense {{ user.username }}</label>
+              <input v-if="user.id in selectedReviewers" :id="`hisense-password-${user.id}`" v-model="selectedReviewers[user.id]" type="password" autocomplete="new-password" minlength="8" maxlength="128" required :disabled="savingReviewers" :class="inputClass" class="mt-1">
+            </div>
+          </div>
+          <p v-if="!reviewerUsers.length" class="text-sm text-muted">Belum ada akun Internal yang terdaftar sebagai petugas reviewer.</p>
+          <p v-if="reviewerError" role="alert" class="text-sm text-red-700">{{ reviewerError }}</p>
+          <button type="submit" :disabled="!selectedCount || savingReviewers" class="rounded-theme bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{{ savingReviewers ? 'Memverifikasi…' : `Simpan Password ${selectedCount} Petugas` }}</button>
+        </form>
+      </section>
       <section class="overflow-hidden rounded-theme border border-stone-200 bg-white shadow-card">
         <div class="flex flex-wrap items-center justify-between gap-4 border-b border-stone-100 p-6">
           <h2 class="text-lg font-semibold">Daftar User <span class="text-sm font-normal text-muted">({{ filteredUsers.length }})</span></h2>

@@ -5,9 +5,9 @@ import { node } from '@elysiajs/node'
 import { Elysia } from 'elysia'
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db, pool } from './db/index.js'
-import { activityLogs, schools, services } from './db/schema.js'
+import { activityLogs, petugasReviewer, schools, services } from './db/schema.js'
 import { clearSessionCookie, createSession, findUser, getSessionUser, setSessionCookie, verifyPassword } from './auth.js'
-import { configuredDirectorates, getHisenseTransaction, getHisenseTransactions, getHisenseSmkPages, type HisenseTransaction } from './hisense.js'
+import { clearHisenseReviewerSession, configuredDirectorates, getHisenseTransaction, getHisenseTransactions, getHisenseSmkPages, loginHisenseReviewer, setHisenseReviewerSession, type HisenseTransaction } from './hisense.js'
 import { recordActivity } from './activity.js'
 import { aggregateProvinceStatistics, provinceKey } from './province-statistics.js'
 import { getHisenseProvinceProgress } from './hisense-progress.js'
@@ -48,11 +48,19 @@ const app = new Elysia({ adapter: node() })
     const province = canonicalProvince(user.province)
     if (user.role === 'Dinas' && !province) { set.status = 403; return { message: 'Akun Dinas belum memiliki provinsi yang valid. Hubungi administrator.' } }
     const authUser = { id: user.id, username: user.username, role: user.role, province: user.role === 'Dinas' ? province : null }
-    setSessionCookie(context, await createSession(authUser, user.passwordHash))
+    const [reviewer] = user.role === 'Internal' ? await db.select({ id: petugasReviewer.id }).from(petugasReviewer).where(eq(petugasReviewer.userPetugas, user.username)).limit(1) : []
+    let hisenseSession: Awaited<ReturnType<typeof loginHisenseReviewer>> | undefined
+    if (reviewer) {
+      try { hisenseSession = await loginHisenseReviewer(user.username, credentials.password) }
+      catch (error) { set.status = 502; return { message: error instanceof Error ? error.message : 'Login Hisense petugas gagal.' } }
+    }
+    const sessionToken = await createSession(authUser, user.passwordHash)
+    if (hisenseSession) setHisenseReviewerSession(sessionToken, hisenseSession)
+    setSessionCookie(context, sessionToken)
     await recordActivity(context, authUser, 'LOGIN_SUCCESS')
     return { user: authUser }
   })
-  .post('/api/auth/logout', async (context) => { const user = await getSessionUser(context); clearSessionCookie(context); if (user) await recordActivity(context, user, 'LOGOUT').catch(console.error); return { success: true } })
+  .post('/api/auth/logout', async (context) => { const user = await getSessionUser(context); clearHisenseReviewerSession(String(context.cookie.monitoring_session?.value ?? '')); clearSessionCookie(context); if (user) await recordActivity(context, user, 'LOGOUT').catch(console.error); return { success: true } })
   .get('/api/auth/me', async (context) => {
     const user = await getSessionUser(context)
     if (!user) { context.set.status = 401; return { message: 'Unauthenticated' } }
