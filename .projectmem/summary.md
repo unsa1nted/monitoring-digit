@@ -11,6 +11,8 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [OPEN] #0052 Reviewer MOE tetap direktoratsmk setelah reviu memakai token sistem meski payload reviewer_name adalah username petugas login. [apps/api/src/hisense.ts:61] (open)
   - Partial attempt: Bandingkan log persetujuan aplikasi terbaru dengan GET Hisense: 1 persetujuan ditemukan, approved_by_moe tidak cocok username login dan bernilai akun integrasi direktoratsmk. Payload reviewer_name tidak menentukan field itu. [apps/api/src/hisense.ts:61]
   - Partial attempt: Batalkan login Hisense per petugas; kembali ke token sistem dan reviewer_name=username login. Mock review, build API/web lulus; Hisense remote sebelumnya tetap menyimpan direktoratsmk. [apps/api/src/hisense.ts:61]
+- [DONE] #0055 Approve BAPP menampilkan error status DISETUJUI saat transaksi sebenarnya sudah disetujui; perlu respons sukses idempoten. [apps/api/src/bapp-review.ts:552] (fixed)
+- [DONE] #0054 Permintaan catatan perbaikan untuk status Revisi Tersedia dan autosave pilihan reviu foto; periksa alur penyimpanan saat ini. [apps/web/pages/cek-bapp.vue] (fixed)
 - [DONE] #0051 Penolakan Hisense perlu memakai PUT /hi-transaksi/alokasi/review/:id dengan tag_revisi string; contoh memakai token StaffSMK, sementara aplikasi memakai token Direktorat SMK. [apps/api/src/hisense.ts:61] (fixed)
 - [DONE] #0050 Perlu memastikan Reviewer MOE Hisense cocok dengan petugas yang menyetujui, serta menyimpan riwayat sinkron Excel otomatis dengan waktu dan jumlah alokasi per petugas. [apps/api/src/bapp-review.ts] (fixed)
 - [DONE] #0049 Penolakan BAPP ke endpoint direktorat Hisense gagal: column a.kode_direktorat does not exist. [apps/api/src/hisense.ts:61] (fixed)
@@ -19,13 +21,10 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [DONE] #0046 Bagian atas modal reviu BAPP masih terpotong dan modal tidak memenuhi layar setelah perbaikan overflow. [apps/web/pages/cek-bapp.vue:375] (fixed)
 - [DONE] #0045 Catatan penolakan tidak tampil di modal Cek BAPP meski Hisense menyediakan catatan_revisi. [apps/web/pages/cek-bapp.vue:122] (fixed)
 - [DONE] #0044 Modal reviu BAPP tampak terpotong; perlu notifikasi sukses, catatan penolakan/revisi sebelumnya, dan perpindahan foto otomatis setelah penilaian. [apps/web/pages/cek-bapp.vue] (fixed)
-- [DONE] #0043 Hisense menampilkan Reviewer MOE direktoratsmk meski payload review mengirim reviewer_name petugas; selidiki kontrak endpoint dan sumber nilai kolom. [apps/api/src/hisense.ts:61] (fixed)
-- [DONE] #0042 Nama Reviewer MOE pada approve/reject Hisense diduga memakai akun integrasi direktoratsmk, bukan username petugas login. [apps/api/src/bapp-review.ts] (fixed)
-- ...and 41 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
+- ...and 43 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
-- Auto assign dari master_bapp memperbarui assignment NPSN yang cocok dengan reviewer terdaftar; NPSN dengan lebih dari satu petugas_reviu dilewati agar tidak memilih petugas secara acak. [apps/api/src/bapp-review.ts:45]
-- Tombol Ambil Data Petugas hanya mengisi master_bapp.petugas_reviu yang kosong dari Hisense approved_by_moe menurut id_transaksi; nilai terisi, petugas_reviewer, dan assignment tidak diubah. [apps/api/src/bapp-review.ts]
+- ...2 earlier decisions not shown (`pjm search`, or `search_events(query)` via MCP)
 - Impor Excel BAPP otomatis meng-upsert assignment NPSN untuk reviewer terdaftar saat pasangan petugas per NPSN konsisten; INSTALASI SELESAI Resubmit TRUE memakai Reviewer MOE Revisi, baris lain Reviewer MOE, Tag dikosongkan, dan nilai reviu foto lama dipertahankan. [apps/api/src/bapp-review.ts]
 - REVIU APIP diimpor seperti SESUAI APIP; DISETUJUI, SESUAI APIP, dan REVIU APIP tidak menampilkan aksi reviu dan API menolak perubahan reviu. [apps/api/src/bapp-review.ts:12]
 - Impor hasil reviu Excel memakai Serial Number untuk mencocokkan master_bapp; ID Transaksi membedakan serial ganda. Delapan sel foto kosong menjadi NULL, dan Hasil Akhir Reviu dari sheet dipakai atau dihitung bila foto lengkap. [apps/api/src/bapp-excel-import.ts:21]
@@ -39,9 +38,10 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Tabel Petugas Reviewer memuat ulang /api/bapp-dashboard tiap 60 detik saat halaman terbuka; cap waktu WIB berubah hanya setelah permintaan berhasil [apps/web/pages/index.vue:46]
 - Catat tiap sinkron unduhan Hisense yang berhasil (otomatis/manual) dalam bapp_hisense_sync_runs, termasuk snapshot jumlah alokasi per reviewer; impor file manual tidak masuk riwayat ini. [apps/api/src/db/schema.ts:59]
 - Petugas reviewer login aplikasi dengan password yang sama seperti Hisense; API memperoleh token StaffSMK dan menyimpannya sementara per sesi. Approve/reject memakai token itu. Admin dapat menyamakan password beberapa reviewer setelah validasi Hisense. [apps/api/src/hisense.ts:64]
+- Autosave pilihan dan catatan foto sebagai draft di master_bapp lewat PATCH; perubahan status Hisense tetap hanya pada persetujuan atau penolakan final. [apps/api/src/bapp-review.ts:536]
+- Approve BAPP idempoten untuk status DISETUJUI pada master atau Hisense; draft pada status DISETUJUI diabaikan tanpa error, status lokal disinkronkan bila Hisense sudah menyetujui. [apps/api/src/bapp-review.ts:536]
 
 ## Notes
-- gotcha: Direktorat Hisense token hanya untuk /direktorat; approve/reject BAPP memakai /hi-auth/login dan PUT /hi-transaksi/alokasi/review/:id [apps/api/src/hisense.ts:61]
 - New feature: feat: Update add BAPP system [apps/api/drizzle/0013_round_quasimodo.sql]
 - New feature: feat: update [apps/api/src/bapp-review.ts]
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
@@ -51,6 +51,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat : Update [apps/api/drizzle/0020_busy_starbolt.sql]
 - New feature: feat: update [apps/api/scripts/test-hisense-export.ts]
 - gotcha: Token Hisense petugas hanya ada di memori proses API; setelah restart API, petugas perlu logout/login lagi sebelum approve atau reject. [apps/api/src/hisense.ts:24]
+- New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 
 ## Key files
 - `.env.example`

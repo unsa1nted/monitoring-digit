@@ -14,7 +14,7 @@ type Transaction = {
   jumlah_pid?: number | null
   tag_revisi?: string | string[] | null
   catatan_revisi?: string | null
-  riwayat_revisi_moe?: unknown[] | null
+  riwayat_revisi_moe?: Array<{ catatan_perbaikan?: string | null }> | null
   riwayat_revisi_apip?: unknown[] | null
   npsn_info?: { npsn?: string; nama_sekolah?: string | null; propinsi?: string | null; kabupaten_kota?: string | null; kecamatan?: string | null; alamat?: string; qty?: number | null } | null
   foto_instalasi?: Record<string, string | null> | null
@@ -119,6 +119,7 @@ const hisenseReviewStatus = computed(() => {
   if (item.approved_by_moe || item.approved_by_apip) return 'Sudah Disetujui'
   return null
 })
+const repairNote = computed(() => [...(detail.value?.riwayat_revisi_moe ?? [])].reverse().find(item => item.catatan_perbaikan?.trim())?.catatan_perbaikan?.trim())
 const currentPhotoUrl = computed(() => detailMatchesSerial.value ? photo(detail.value, currentPhoto.value.key) : null)
 watch([photoIndex, selectedSerial, detail], () => {
   imageLoading.value = Boolean(currentPhotoUrl.value)
@@ -144,12 +145,17 @@ const saving = ref(false)
 const reviewError = ref('')
 const reviewMessage = ref('')
 let reviewMessageTimer: ReturnType<typeof setTimeout> | undefined
+let draftTimer: ReturnType<typeof setTimeout> | undefined
+let draftRequest: Promise<unknown> = Promise.resolve()
+let draftDirty = false
 const hasRejectedPhoto = computed(() => photoFields.some(field => reviewForm[field.reviewKey] === 'Tidak'))
 const rejectedPhotoNotes = computed(() => compilePhotoNotes(photoNotes, photoFields.filter(field => reviewForm[field.reviewKey] === 'Tidak')))
 const decision = ref<'approve' | 'reject' | null>(null)
 const selectedReasons = ref<string[]>([])
 const rejectionNote = ref('')
 async function openReview(row: ReviewRow) {
+  if (draftTimer) clearTimeout(draftTimer)
+  draftDirty = false
   reviewing.value = row
   selectedSerial.value = row.transaction?.serial_number?.trim() ?? ''
   detail.value = null
@@ -181,7 +187,8 @@ async function openReview(row: ReviewRow) {
     if (reviewing.value === row) detailError.value = error?.data?.message ?? 'Detail Hisense belum dapat dimuat. Coba lagi.'
   } finally { if (reviewing.value === row) detailLoading.value = false }
 }
-function closeReview() {
+async function closeReview() {
+  try { await flushDraft() } catch { return }
   if (import.meta.client && document.fullscreenElement === photoViewer.value) void document.exitFullscreen()
   decision.value = null
   reviewing.value = null
@@ -204,9 +211,31 @@ function advancePhoto() { if (photoIndex.value < photoFields.length - 1) selectP
 function setPhotoVerdict(verdict: Verdict) {
   const field = currentPhoto.value
   reviewForm[field.reviewKey] = verdict
+  scheduleDraft()
   photoNoteError.value = ''
   if (verdict === 'Ya' || photoNotes[field.reviewKey].trim()) advancePhoto()
   else nextTick(() => photoNoteInput.value?.focus())
+}
+function scheduleDraft() {
+  draftDirty = true
+  if (draftTimer) clearTimeout(draftTimer)
+  draftTimer = setTimeout(() => { void flushDraft().catch(() => {}) }, 400)
+}
+async function flushDraft() {
+  if (draftTimer) clearTimeout(draftTimer)
+  draftTimer = undefined
+  if (draftDirty && detailMatchesSerial.value && detail.value?.id_transaksi) {
+    draftDirty = false
+    const id = detail.value.id_transaksi
+    const catatanPetugas = compilePhotoNotes(photoNotes, photoFields.filter(field => reviewForm[field.reviewKey] === 'Tidak'), legacyNote.value)
+    if (catatanPetugas.length > 5000) { draftDirty = true; reviewError.value = 'Gabungan catatan maksimal 5000 karakter.'; throw new Error(reviewError.value) }
+    const body = { ...Object.fromEntries(photoFields.map(field => [field.reviewKey, reviewForm[field.reviewKey] || null])), catatanPetugas }
+    draftRequest = draftRequest.catch(() => {}).then(() => $fetch(`/api/bapp-review/${encodeURIComponent(id)}/draft`, {
+      baseURL: config.public.apiBase, credentials: 'include', method: 'PATCH', body
+    })).catch(error => { draftDirty = true; throw error })
+  }
+  try { await draftRequest }
+  catch (error: any) { reviewError.value = error?.data?.message ?? 'Autosave gagal. Coba lagi sebelum menutup reviu.'; throw error }
 }
 function advanceAfterRejectionNote() {
   if (reviewForm[currentPhoto.value.reviewKey] === 'Tidak' && photoNotes[currentPhoto.value.reviewKey].trim()) advancePhoto()
@@ -280,16 +309,20 @@ async function saveReview() {
   saving.value = true
   reviewError.value = ''
   try {
+    if (draftTimer) clearTimeout(draftTimer)
+    draftTimer = undefined
+    await draftRequest.catch(() => {})
     await $fetch(`/api/bapp-review/${encodeURIComponent(id)}`, { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { ...reviewForm, catatanPetugas, action, rejectionReasons: selectedReasons.value, rejectionNote: rejectionText } })
-    closeReview()
-    reviewMessage.value = `Transaksi ${id} ${action === 'approve' ? 'disetujui' : 'ditolak'} di Hisense.`
+    draftDirty = false
+    await closeReview()
+    reviewMessage.value = `Transaksi ${id} ${action === 'approve' ? 'berhasil disetujui' : 'ditolak'} di Hisense.`
     if (reviewMessageTimer) clearTimeout(reviewMessageTimer)
     reviewMessageTimer = setTimeout(() => { reviewMessage.value = '' }, 7000)
     void Promise.all([refresh(), refreshSummary()]).catch(console.error)
   } catch (error: any) { reviewError.value = error?.data?.message ?? 'Reviu gagal disimpan. Coba lagi.' }
   finally { saving.value = false }
 }
-onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
+onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if (draftTimer) void flushDraft().catch(() => {}) })
 </script>
 
 <template>
@@ -486,7 +519,7 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
                     v-model="photoNotes[currentPhoto.reviewKey]" type="text" maxlength="500"
                     :aria-invalid="Boolean(photoNoteError)"
                     class="w-full rounded-theme border border-stone-300 bg-white px-3 py-2 text-sm"
-                    placeholder="Jelaskan alasan tidak sesuai" @input="photoNoteError = ''" @blur="onRejectionNoteBlur" @keydown.enter.prevent="advanceAfterRejectionNote">
+                    placeholder="Jelaskan alasan tidak sesuai" @input="photoNoteError = ''; scheduleDraft()" @blur="onRejectionNoteBlur" @keydown.enter.prevent="advanceAfterRejectionNote">
                   <p class="text-xs text-muted">Setelah catatan diisi, tekan Enter atau klik di luar untuk lanjut.</p>
                   <p v-if="photoNoteError" role="alert" class="text-xs text-red-700">{{ photoNoteError }}</p>
                 </div>
@@ -515,6 +548,10 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
               <div v-if="detailMatchesSerial && (hisenseReviewStatus === 'Sedang Ditolak' || reviewing?.review?.sudahAdaRevisi === 'Ya' || detail?.catatan_revisi?.trim())" class="mt-4 rounded-theme border border-red-300 bg-red-50 p-3 text-red-800">
                 <p class="flex items-center gap-2 text-sm font-semibold"><AppIcon name="circle-x" class="h-4 w-4 shrink-0" />Catatan penolakan/revisi sebelumnya:</p>
                 <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ detail?.catatan_revisi?.trim() || 'Catatan revisi tidak tersedia di Hisense.' }}</p>
+              </div>
+              <div v-if="detailMatchesSerial && reviewing?.review?.sudahAdaRevisi === 'Ya'" class="mt-3 rounded-theme border border-green-300 bg-green-50 p-3 text-green-800">
+                <p class="flex items-center gap-2 text-sm font-semibold"><AppIcon name="circle-check" class="h-4 w-4 shrink-0" />Catatan Perbaikan:</p>
+                <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ repairNote || 'Catatan perbaikan tidak tersedia di Hisense.' }}</p>
               </div>
               <p v-if="detailLoading" role="status" class="mt-5 text-sm text-muted">Sedang memuat detail Hisense…</p>
               <p v-if="detailError" role="alert" class="mt-5 text-sm text-red-700">{{ detailError }}</p>

@@ -12,6 +12,17 @@ const npsnPattern = /^\d{8}$/
 const usernamePattern = /^[a-zA-Z0-9_.-]{3,80}$/
 export const lockedBappReviewStatuses = new Set(['DISETUJUI', 'SESUAI APIP', 'REVIU APIP'])
 const verdict = t.Union([t.Literal('Ya'), t.Literal('Tidak')])
+const draftBody = t.Object({
+  fotoPlangSekolah: t.Union([verdict, t.Null()]),
+  fotoBoxPic: t.Union([verdict, t.Null()]),
+  fotoKelengkapanUnit: t.Union([verdict, t.Null()]),
+  fotoProsesInstalasi: t.Union([verdict, t.Null()]),
+  fotoKesesuaianSerialNumber: t.Union([verdict, t.Null()]),
+  fotoTrainingRumahPendidikan: t.Union([verdict, t.Null()]),
+  fotoBapp1: t.Union([verdict, t.Null()]),
+  fotoBapp2: t.Union([verdict, t.Null()]),
+  catatanPetugas: t.String({ maxLength: 5000 })
+})
 const reviewBody = t.Object({
   action: t.Union([t.Literal('approve'), t.Literal('reject')]),
   fotoPlangSekolah: verdict,
@@ -522,6 +533,20 @@ export const bappReview = new Elysia()
     .where(and(eq(bappReviewNotifications.userPetugas, user.username), inArray(bappReviewNotifications.id, context.body.ids), isNull(bappReviewNotifications.readAt)))
   return { success: true }
 }, { body: t.Object({ ids: t.Array(t.Number({ minimum: 1 }), { minItems: 1 }) }) })
+.patch('/api/bapp-review/:id/draft', async context => {
+  const user = await getSessionUser(context)
+  if (!user) { context.set.status = 401; return { message: 'Silakan login terlebih dahulu.' } }
+  if (user.role !== 'Internal') { context.set.status = 403; return { message: 'Hanya akun Internal yang dapat mereviu BAPP.' } }
+  const id = context.params.id
+  if (!id || id.length > 80) { context.set.status = 400; return { message: 'ID transaksi tidak valid.' } }
+  const [stored] = await db.select({ petugasReviu: masterBapp.petugasReviu, statusProgress: masterBapp.statusProgress }).from(masterBapp).where(eq(masterBapp.idTransaksi, id)).limit(1)
+  if (!stored) { context.set.status = 404; return { message: 'Transaksi belum ada di master BAPP.' } }
+  if (stored.petugasReviu.toLowerCase() !== user.username.toLowerCase()) { context.set.status = 403; return { message: 'Transaksi bukan milik petugas Anda.' } }
+  if (stored.statusProgress === 'DISETUJUI') return { success: true, alreadyApproved: true }
+  if (lockedBappReviewStatuses.has(stored.statusProgress ?? '')) { context.set.status = 409; return { message: `Reviu tidak dapat diubah pada status ${stored.statusProgress}.` } }
+  await db.update(masterBapp).set(context.body).where(eq(masterBapp.idTransaksi, id))
+  return { success: true }
+}, { body: draftBody })
 .get('/api/bapp-review/:id/detail', async context => {
     const user = await getSessionUser(context)
     if (!user) { context.set.status = 401; return { message: 'Silakan login terlebih dahulu.' } }
@@ -558,6 +583,9 @@ export const bappReview = new Elysia()
     const [stored] = await db.select({ npsn: masterBapp.npsn, serialNumber: masterBapp.serialNumber, sudahAdaRevisi: masterBapp.sudahAdaRevisi, petugasReviu: masterBapp.petugasReviu, statusProgress: masterBapp.statusProgress }).from(masterBapp).where(eq(masterBapp.idTransaksi, id)).limit(1)
     if (!stored) { context.set.status = 404; return { message: 'Transaksi belum ada di master BAPP.' } }
     if (stored.petugasReviu.toLowerCase() !== user.username.toLowerCase()) { context.set.status = 403; return { message: 'Transaksi bukan milik petugas Anda.' } }
+    if (stored.statusProgress === 'DISETUJUI' && context.body.action === 'approve') {
+      return { success: true, hasilAkhirReviu: 'Sesuai', statusProgress: 'DISETUJUI', alreadyApproved: true }
+    }
     if (lockedBappReviewStatuses.has(stored.statusProgress ?? '')) {
       context.set.status = 409
       return { message: `Reviu tidak dapat diubah pada status ${stored.statusProgress}.` }
@@ -570,6 +598,10 @@ try { transaction = await getHisenseTransaction(id, 'smk', { bypassCache: true }
     if (npsn !== stored.npsn || (stored.serialNumber?.trim() && transaction.serial_number?.trim() !== stored.serialNumber.trim())) {
       context.set.status = 409
       return { message: 'NPSN atau Serial Number Hisense berbeda dari master BAPP.' }
+    }
+    if (transaction.kode_status_progress === 'DISETUJUI' && context.body.action === 'approve') {
+      await db.update(masterBapp).set({ statusProgress: 'DISETUJUI', hasilAkhirReviu: 'Sesuai' }).where(eq(masterBapp.idTransaksi, id))
+      return { success: true, hasilAkhirReviu: 'Sesuai', statusProgress: 'DISETUJUI', alreadyApproved: true }
     }
     if (lockedBappReviewStatuses.has(transaction.kode_status_progress ?? '')) {
       context.set.status = 409
