@@ -578,11 +578,10 @@ if (body.action === 'reject' && (!reasons.length || reasons.some(reason => !bapp
 }
 const hasilAkhirReviu: 'Sesuai' | 'Tidak Sesuai' = body.action === 'approve' ? 'Sesuai' : 'Tidak Sesuai'
 const nextStatus = body.action === 'approve' ? 'DISETUJUI' : 'REVISI'
-const [reviewer] = await db.select({ namaPetugas: petugasReviewer.namaPetugas }).from(petugasReviewer).where(eq(petugasReviewer.userPetugas, user.username)).limit(1)
 try {
   await reviewHisenseAllocation(id, {
     kode_status_progress: nextStatus,
-    reviewer_name: reviewer?.namaPetugas || user.username,
+    reviewer_name: user.username,
     ...(body.action === 'reject' ? { tag_revisi: reasons.join(', '), catatan_revisi: body.rejectionNote!.trim() } : {})
   })
 } catch (error) {
