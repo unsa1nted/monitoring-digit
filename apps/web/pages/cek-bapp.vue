@@ -14,7 +14,7 @@ type Transaction = {
   jumlah_pid?: number | null
   tag_revisi?: string | string[] | null
   catatan_revisi?: string | null
-  riwayat_revisi_moe?: Array<{ catatan_rejeksi?: string | null }> | null
+  riwayat_revisi_moe?: unknown[] | null
   riwayat_revisi_apip?: unknown[] | null
   npsn_info?: { npsn?: string; nama_sekolah?: string | null; propinsi?: string | null; kabupaten_kota?: string | null; kecamatan?: string | null; alamat?: string; qty?: number | null } | null
   foto_instalasi?: Record<string, string | null> | null
@@ -119,11 +119,7 @@ const hisenseReviewStatus = computed(() => {
   if (item.approved_by_moe || item.approved_by_apip) return 'Sudah Disetujui'
   return null
 })
-const showPreviousRejection = computed(() => detailMatchesSerial.value && (hisenseReviewStatus.value === 'Sedang Ditolak' || (reviewing.value?.review?.sudahAdaRevisi === 'Ya' && !lockedReviewStatuses.has(detail.value?.kode_status_progress ?? ''))))
-const previousRejectionNote = computed(() => detail.value?.catatan_revisi?.trim()
-  || detail.value?.riwayat_revisi_moe?.findLast(item => item.catatan_rejeksi?.trim())?.catatan_rejeksi?.trim()
-  || reviewing.value?.review?.catatanPetugas?.trim()
-  || 'Catatan belum tersedia.')
+const previousRejectionNote = computed(() => detailMatchesSerial.value ? detail.value?.catatan_revisi?.trim() ?? '' : '')
 const currentPhotoUrl = computed(() => detailMatchesSerial.value ? photo(detail.value, currentPhoto.value.key) : null)
 watch([photoIndex, selectedSerial, detail], () => {
   imageLoading.value = Boolean(currentPhotoUrl.value)
@@ -377,7 +373,7 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
         </div>
       </div>
       <div v-if="reviewing" ref="reviewModal" role="dialog" aria-modal="true" aria-labelledby="review-title"
-        class="fixed inset-0 z-50 h-dvh w-screen overflow-y-auto bg-canvas text-ink" @keydown="onModalKeydown">
+        class="fixed inset-0 z-50 h-dvh w-screen overflow-y-auto bg-canvas text-ink" style="margin-top: 0" @keydown="onModalKeydown">
         <form class="flex min-h-full flex-col" @submit.prevent>
           <header
             class="flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-5 py-3 shadow-sm">
@@ -517,7 +513,7 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer) })
               <span v-if="hisenseReviewStatus"
                 :class="hisenseReviewStatus === 'Sudah Disetujui' ? 'bg-teal-50 text-teal-700' : 'bg-red-50 text-red-700'"
                 class="mt-3 inline-flex rounded-theme px-3 py-1 text-xs font-semibold">{{ hisenseReviewStatus }}</span>
-              <div v-if="showPreviousRejection" class="mt-4 rounded-theme border border-red-300 bg-red-50 p-3 text-red-800">
+              <div v-if="previousRejectionNote" class="mt-4 rounded-theme border border-red-300 bg-red-50 p-3 text-red-800">
                 <p class="flex items-center gap-2 text-sm font-semibold"><AppIcon name="circle-x" class="h-4 w-4 shrink-0" />Catatan penolakan/revisi sebelumnya:</p>
                 <p class="mt-2 whitespace-pre-wrap break-words text-sm">{{ previousRejectionNote }}</p>
               </div>
