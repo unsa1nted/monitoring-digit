@@ -5,7 +5,7 @@ import {
   LuLoaderCircle, LuLogIn, LuLogOut, LuUsers, LuMenu, LuMonitor, LuPlus, LuRefreshCw, LuSchool,
   LuSearch, LuTruck, LuX, LuPrinter, LuScanBarcode, LuPackage, LuSave, LuArrowLeftRight,
   LuClipboardCheck, LuCircleCheck, LuCircleX, LuImage, LuMaximize, LuMinimize,
-  LuZoomIn, LuZoomOut, LuListFilter, LuCheck, LuMedal
+  LuZoomIn, LuZoomOut, LuListFilter, LuCheck, LuMedal, LuDownload
 } from '@kalimahapps/vue-icons/lu'
 
 const icons = {
@@ -18,7 +18,7 @@ const icons = {
   printer: LuPrinter, scan: LuScanBarcode, package: LuPackage, save: LuSave, switch: LuArrowLeftRight,
   'clipboard-check': LuClipboardCheck, 'circle-check': LuCircleCheck, 'circle-x': LuCircleX,
   image: LuImage, maximize: LuMaximize, minimize: LuMinimize, 'zoom-in': LuZoomIn,
-  'zoom-out': LuZoomOut, 'list-filter': LuListFilter, check: LuCheck, medal: LuMedal
+  'zoom-out': LuZoomOut, 'list-filter': LuListFilter, check: LuCheck, medal: LuMedal, download: LuDownload
 }
 defineProps<{ name: keyof typeof icons }>()
 </script>

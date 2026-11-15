@@ -11,6 +11,12 @@ import { bappRejectionReasons } from '../../../shared/bapp-rejection-reasons.js'
 const npsnPattern = /^\d{8}$/
 const usernamePattern = /^[a-zA-Z0-9_.-]{3,80}$/
 export const lockedBappReviewStatuses = new Set(['DISETUJUI', 'SESUAI APIP', 'REVIU APIP'])
+const revisionReadyFields = {
+  sudahAdaRevisi: 'Ya' as const, statusProgress: 'INSTALASI SELESAI', hasilAkhirReviu: null,
+  fotoPlangSekolah: null, fotoBoxPic: null, fotoKelengkapanUnit: null, fotoProsesInstalasi: null,
+  fotoKesesuaianSerialNumber: null, fotoTrainingRumahPendidikan: null, fotoBapp1: null, fotoBapp2: null,
+  catatanPetugas: null
+}
 const verdict = t.Union([t.Literal('Ya'), t.Literal('Tidak')])
 const draftBody = t.Object({
   fotoPlangSekolah: t.Union([verdict, t.Null()]),
@@ -196,8 +202,10 @@ export async function importBappExcel(buffer: Buffer, progress: BappImportProgre
   progress(45, 'Membaca Excel Hisense')
   const parsed = await parseBappExcel(buffer)
   progress(50, 'Memeriksa transaksi baru')
-  const existing = new Set((await db.select({ idTransaksi: masterBapp.idTransaksi }).from(masterBapp)).map(row => row.idTransaksi))
+  const existing = new Map((await db.select({ idTransaksi: masterBapp.idTransaksi, statusProgress: masterBapp.statusProgress, hasilAkhirReviu: masterBapp.hasilAkhirReviu, petugasReviu: masterBapp.petugasReviu }).from(masterBapp)).map(row => [row.idTransaksi, row]))
   const newReviewRows = parsed.rows.filter(row => !existing.has(row.idTransaksi) && row.sudahAdaRevisi === 'Tidak' && row.statusProgress === 'INSTALASI SELESAI')
+  const revisionRows = parsed.rows.filter(row => row.statusProgress === 'INSTALASI SELESAI' && (existing.get(row.idTransaksi)?.statusProgress === 'REVISI' || existing.get(row.idTransaksi)?.hasilAkhirReviu === 'Tidak Sesuai'))
+  const revisionIds = new Set(revisionRows.map(row => row.idTransaksi))
   const reviewers = await db.select({ userPetugas: petugasReviewer.userPetugas, namaPetugas: petugasReviewer.namaPetugas, alokasiPersen: petugasReviewer.alokasiPersen }).from(petugasReviewer)
   const allocations = distributeNewBappRows(newReviewRows, reviewers)
   const created = parsed.rows.filter(row => !existing.has(row.idTransaksi)).length
@@ -205,12 +213,14 @@ export async function importBappExcel(buffer: Buffer, progress: BappImportProgre
     for (let index = 0; index < parsed.rows.length; index++) {
       const row = parsed.rows[index]!
       const assignedReviewer = allocations.get(row.idTransaksi)
-      const keepReviewer = assignedReviewer || (existing.has(row.idTransaksi) && row.sudahAdaRevisi === 'Tidak' && row.statusProgress === 'INSTALASI SELESAI')
+      const revisionReady = revisionIds.has(row.idTransaksi)
+      const keepReviewer = assignedReviewer || revisionReady || (existing.has(row.idTransaksi) && row.sudahAdaRevisi === 'Tidak' && row.statusProgress === 'INSTALASI SELESAI')
       const metadata = {
         sudahAdaRevisi: row.sudahAdaRevisi, statusProgress: row.statusProgress, npsn: row.npsn,
         namaSekolah: row.namaSekolah, propinsi: row.propinsi, kabupatenKota: row.kabupatenKota,
         kecamatan: row.kecamatan, serialNumber: row.serialNumber, tag: null,
-        ...(!keepReviewer && row.petugasReviu ? { petugasReviu: row.petugasReviu } : {})
+        ...(!keepReviewer && row.petugasReviu ? { petugasReviu: row.petugasReviu } : {}),
+        ...(revisionReady ? revisionReadyFields : {})
       }
       await tx.insert(masterBapp).values({ idTransaksi: row.idTransaksi, petugasReviu: assignedReviewer ?? row.petugasReviu, ...metadata })
         .onDuplicateKeyUpdate({ set: metadata })
@@ -220,6 +230,11 @@ export async function importBappExcel(buffer: Buffer, progress: BappImportProgre
     if (assignedRows.length) await tx.insert(bappReviewNotifications).values(assignedRows.map(row => ({
       idTransaksi: row.idTransaksi, userPetugas: allocations.get(row.idTransaksi)!, namaSekolah: row.namaSekolah, npsn: row.npsn
     }))).onDuplicateKeyUpdate({ set: { idTransaksi: sql`${bappReviewNotifications.idTransaksi}` } })
+    for (const row of revisionRows) {
+      const userPetugas = existing.get(row.idTransaksi)!.petugasReviu
+      await tx.insert(bappReviewNotifications).values({ idTransaksi: row.idTransaksi, userPetugas, namaSekolah: row.namaSekolah, npsn: row.npsn })
+        .onDuplicateKeyUpdate({ set: { userPetugas, namaSekolah: row.namaSekolah, npsn: row.npsn, readAt: null, createdAt: new Date() } })
+    }
     if (source) {
       const counts = new Map<string, number>()
       for (const username of allocations.values()) counts.set(username, (counts.get(username) ?? 0) + 1)
@@ -269,6 +284,35 @@ export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'auto
 
 export function startBappHisenseSyncScheduler() {
   return setInterval(() => { void startHisenseSyncJob().catch(console.error) }, 10 * 60 * 1000)
+}
+
+let revisionCheckRunning = false
+export async function checkBappRevisions() {
+  if (revisionCheckRunning) return
+  revisionCheckRunning = true
+  try {
+    const pending = await db.select({ idTransaksi: masterBapp.idTransaksi, npsn: masterBapp.npsn, serialNumber: masterBapp.serialNumber, namaSekolah: masterBapp.namaSekolah, petugasReviu: masterBapp.petugasReviu })
+      .from(masterBapp).where(or(eq(masterBapp.statusProgress, 'REVISI'), eq(masterBapp.hasilAkhirReviu, 'Tidak Sesuai')))
+    for (let index = 0; index < pending.length; index += 10) await Promise.all(pending.slice(index, index + 10).map(async row => {
+      try {
+        const transaction = await getHisenseTransaction(row.idTransaksi, 'smk', { bypassCache: true })
+        if (transaction?.kode_status_progress !== 'INSTALASI SELESAI' || transaction.npsn_info?.npsn?.trim() !== row.npsn ||
+          (row.serialNumber?.trim() && transaction.serial_number?.trim() !== row.serialNumber.trim())) return
+        await db.transaction(async tx => {
+          const [change] = await tx.update(masterBapp).set(revisionReadyFields)
+            .where(and(eq(masterBapp.idTransaksi, row.idTransaksi), or(eq(masterBapp.statusProgress, 'REVISI'), eq(masterBapp.hasilAkhirReviu, 'Tidak Sesuai'))))
+          if (!change.affectedRows) return
+          const namaSekolah = transaction.npsn_info?.nama_sekolah?.slice(0, 255) ?? row.namaSekolah
+          await tx.insert(bappReviewNotifications).values({ idTransaksi: row.idTransaksi, userPetugas: row.petugasReviu, namaSekolah, npsn: row.npsn })
+            .onDuplicateKeyUpdate({ set: { userPetugas: row.petugasReviu, namaSekolah, npsn: row.npsn, readAt: null, createdAt: new Date() } })
+        })
+      } catch (error) { console.error(`Pemeriksaan revisi BAPP ${row.idTransaksi} gagal:`, error) }
+    }))
+  } finally { revisionCheckRunning = false }
+}
+export function startBappRevisionScheduler() {
+  void checkBappRevisions().catch(console.error)
+  return setInterval(() => { void checkBappRevisions().catch(console.error) }, 60_000)
 }
 
 export const adminBappReview = new Elysia({ prefix: '/api/admin/bapp-review' })
@@ -520,8 +564,9 @@ export const bappReview = new Elysia()
   const user = await getSessionUser(context)
   if (!user) { context.set.status = 401; return { message: 'Silakan login terlebih dahulu.' } }
   if (user.role !== 'Internal') { context.set.status = 403; return { message: 'Notifikasi BAPP hanya untuk akun Internal.' } }
-  const notifications = await db.select({ id: bappReviewNotifications.id, idTransaksi: bappReviewNotifications.idTransaksi, namaSekolah: bappReviewNotifications.namaSekolah, npsn: bappReviewNotifications.npsn })
-    .from(bappReviewNotifications).where(and(eq(bappReviewNotifications.userPetugas, user.username), isNull(bappReviewNotifications.readAt))).orderBy(asc(bappReviewNotifications.id))
+  const notifications = await db.select({ id: bappReviewNotifications.id, idTransaksi: bappReviewNotifications.idTransaksi, namaSekolah: bappReviewNotifications.namaSekolah, npsn: bappReviewNotifications.npsn, isRevision: sql<boolean>`${masterBapp.sudahAdaRevisi} = 'Ya'`.mapWith(Boolean) })
+    .from(bappReviewNotifications).leftJoin(masterBapp, eq(masterBapp.idTransaksi, bappReviewNotifications.idTransaksi))
+    .where(and(eq(bappReviewNotifications.userPetugas, user.username), isNull(bappReviewNotifications.readAt))).orderBy(asc(bappReviewNotifications.id))
   context.set.headers['Cache-Control'] = 'no-store'
   return { notifications }
 })

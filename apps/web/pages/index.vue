@@ -62,6 +62,113 @@ onMounted(() => {
 })
 onUnmounted(() => { if (bappRefreshInterval !== undefined) clearInterval(bappRefreshInterval) })
 const number = (value: number) => new Intl.NumberFormat('id-ID').format(value)
+const downloadingRekap = ref(false)
+const downloadError = ref('')
+
+function wrapCanvasText(context: CanvasRenderingContext2D, value: string, width: number) {
+  const lines: string[] = []
+  let line = ''
+  for (const word of value.split(/\s+/)) {
+    if (!word) continue
+    const next = line ? `${line} ${word}` : word
+    if (context.measureText(next).width <= width) { line = next; continue }
+    if (line) lines.push(line)
+    line = ''
+    for (const character of word) {
+      if (line && context.measureText(line + character).width > width) { lines.push(line); line = '' }
+      line += character
+    }
+  }
+  if (line) lines.push(line)
+  return lines.length ? lines : ['']
+}
+
+async function downloadRekap() {
+  if (downloadingRekap.value) return
+  downloadingRekap.value = true
+  downloadError.value = ''
+  try {
+    await refreshBapp()
+    if (bappError.value || !bappData.value?.reviewers.length) throw new Error('Data petugas belum tersedia.')
+    const reviewers = bappData.value.reviewers
+    const canvas = document.createElement('canvas')
+    canvas.width = 1600
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('Browser tidak dapat membuat gambar.')
+    const columns: Array<{ label: string; key: keyof Pick<ReviewerStats, 'alokasi' | 'diterima' | 'ditolak' | 'sedangRevisi' | 'sudahDiperiksa' | 'belumDiperiksa'>; x: number }> = [
+      { label: 'Alokasi', key: 'alokasi', x: 690 }, { label: 'Diterima', key: 'diterima', x: 830 },
+      { label: 'Ditolak', key: 'ditolak', x: 970 }, { label: 'Sedang Revisi', key: 'sedangRevisi', x: 1135 },
+      { label: 'Sudah Diperiksa', key: 'sudahDiperiksa', x: 1335 }, { label: 'Belum Diperiksa', key: 'belumDiperiksa', x: 1552 }
+    ]
+    const rows = reviewers.map(reviewer => {
+      context.font = '600 19px Arial, sans-serif'
+      const nameLines = wrapCanvasText(context, reviewer.petugas, 370)
+      context.font = '14px Arial, sans-serif'
+      const usernameLines = wrapCanvasText(context, reviewer.username, 370)
+      return { reviewer, nameLines, usernameLines, height: Math.max(66, nameLines.length * 24 + usernameLines.length * 19 + 16) }
+    })
+    canvas.height = 198 + rows.reduce((sum, row) => sum + row.height, 0) + 56
+    context.fillStyle = '#ffffff'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.textBaseline = 'middle'
+    context.textAlign = 'left'
+    context.fillStyle = '#0f172a'
+    context.font = 'bold 34px Arial, sans-serif'
+    context.fillText('Rekap Petugas Reviewer', 48, 62)
+    const exportedAt = new Date()
+    context.fillStyle = '#64748b'
+    context.font = '18px Arial, sans-serif'
+    context.fillText(`${reviewers.length} petugas · ${bappTimeFormatter.format(exportedAt)} WIB`, 48, 105)
+    context.fillStyle = '#e0f2fe'
+    context.fillRect(32, 143, 1536, 55)
+    context.fillStyle = '#075985'
+    context.font = 'bold 17px Arial, sans-serif'
+    context.fillText('Peringkat', 48, 170)
+    context.fillText('Petugas', 150, 170)
+    context.textAlign = 'right'
+    for (const column of columns) context.fillText(column.label, column.x, 170)
+    let top = 198
+    rows.forEach(({ reviewer, nameLines, usernameLines, height }, index) => {
+      context.fillStyle = index % 2 ? '#f8fafc' : '#ffffff'
+      context.fillRect(32, top, 1536, height)
+      context.textBaseline = 'middle'
+      context.fillStyle = '#334155'
+      context.font = 'bold 19px Arial, sans-serif'
+      context.textAlign = 'left'
+      context.fillText(String(index + 1), 48, top + height / 2)
+      context.textBaseline = 'top'
+      context.fillStyle = '#0f172a'
+      context.font = '600 19px Arial, sans-serif'
+      nameLines.forEach((line, lineIndex) => context.fillText(line, 150, top + 8 + lineIndex * 24))
+      context.fillStyle = '#64748b'
+      context.font = '14px Arial, sans-serif'
+      usernameLines.forEach((line, lineIndex) => context.fillText(line, 150, top + 8 + nameLines.length * 24 + lineIndex * 19))
+      context.textBaseline = 'middle'
+      context.textAlign = 'right'
+      context.fillStyle = '#334155'
+      context.font = '18px Arial, sans-serif'
+      for (const column of columns) context.fillText(number(reviewer[column.key]), column.x, top + height / 2)
+      top += height
+    })
+    context.fillStyle = '#cbd5e1'
+    context.fillRect(32, top, 1536, 1)
+    context.fillStyle = '#64748b'
+    context.font = '15px Arial, sans-serif'
+    context.textAlign = 'left'
+    context.fillText('Dashboard Pemantauan Digitalisasi Pembelajaran SMK', 48, top + 29)
+    const image = await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Gambar terlalu besar untuk browser ini.')), 'image/png'))
+    const url = URL.createObjectURL(image)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `rekap-petugas-reviewer-${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(exportedAt)}.png`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  } catch (error) {
+    downloadError.value = error instanceof Error ? error.message : 'Gambar rekap gagal dibuat.'
+  } finally {
+    downloadingRekap.value = false
+  }
+}
 
 const stats = computed(() => [
   { label: 'Penerima PID 2026', value: overview.value?.penerimaPid2026 ?? 0, change: 'Jumlah', detail: 'sekolah penerima', tone: 'sky' }
@@ -77,10 +184,7 @@ const stats = computed(() => [
               <h1 class="text-xl font-semibold tracking-tight">Dashboard</h1>
             </div>
           </div>
-          <div class="flex items-center gap-2"><button class="relative rounded-full p-2.5 text-muted hover:bg-stone-100"
-              aria-label="Notifications">
-              <AppIcon name="bell" /><span class="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500" />
-            </button><button
+          <div class="flex items-center gap-2"><button
               class="grid h-9 w-9 place-items-center rounded-full bg-sky-500 text-lg text-white shadow-sm hover:bg-sky-600"
               aria-label="Quick add">
               <AppIcon name="plus" />
@@ -116,7 +220,8 @@ const stats = computed(() => [
           <p v-if="bappError" role="alert" class="text-sm text-red-700">Ringkasan BAPP belum dapat dimuat.</p>
           <BappSummaryCards :summary="bappData?.summary ?? null" :loading="bappPending && !bappData" />
           <div class="overflow-x-auto rounded-theme border border-stone-200 bg-white shadow-card">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-4"><div><h3 class="text-lg font-semibold">Petugas Reviewer</h3><p class="mt-1 text-xs text-muted">Peringkat berdasarkan jumlah transaksi yang sudah diperiksa. Diperbarui otomatis setiap 1 menit.</p></div><p role="status" class="inline-flex items-center gap-2 text-xs text-muted"><AppIcon name="refresh" class="h-4 w-4" :class="{ 'animate-spin': bappPending }" />Data terakhir sinkron: {{ bappSyncLabel }}</p></div>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-200 px-5 py-4"><div><h3 class="text-lg font-semibold">Petugas Reviewer</h3><p class="mt-1 text-xs text-muted">Peringkat berdasarkan jumlah transaksi yang sudah diperiksa. Diperbarui otomatis setiap 1 menit.</p></div><div class="flex flex-wrap items-center gap-3"><p role="status" class="inline-flex items-center gap-2 text-xs text-muted"><AppIcon name="refresh" class="h-4 w-4" :class="{ 'animate-spin': bappPending }" />Data terakhir sinkron: {{ bappSyncLabel }}</p><button type="button" :disabled="downloadingRekap || bappPending || !bappData?.reviewers?.length" class="inline-flex items-center gap-2 rounded-theme bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50" @click="downloadRekap"><AppIcon name="download" class="h-4 w-4" />{{ downloadingRekap ? 'Membuat gambar…' : 'Download Rekap' }}</button></div></div>
+            <p v-if="downloadError" role="alert" class="px-5 py-2 text-sm text-red-700">{{ downloadError }}</p>
             <table class="w-full min-w-[900px] text-left text-sm">
               <thead class="bg-stone-50 text-muted"><tr><th scope="col" class="px-5 py-3">Peringkat</th><th scope="col" class="px-5 py-3">Petugas</th><th scope="col" class="px-5 py-3 text-right">Alokasi</th><th scope="col" class="px-5 py-3 text-right">Diterima</th><th scope="col" class="px-5 py-3 text-right">Ditolak</th><th scope="col" class="px-5 py-3 text-right">Sedang Revisi</th><th scope="col" class="px-5 py-3 text-right">Sudah Diperiksa</th><th scope="col" class="px-5 py-3 text-right">Belum Diperiksa</th></tr></thead>
               <tbody>

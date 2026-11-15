@@ -6,12 +6,11 @@ const sidebarOpen = ref(false)
 const config = useRuntimeConfig()
 const loggingOut = ref(false)
 const logoutError = ref('')
-type BappNotification = { id: number; idTransaksi: string; namaSekolah: string | null; npsn: string }
+type BappNotification = { id: number; idTransaksi: string; namaSekolah: string | null; npsn: string; isRevision: boolean }
 const bappNotifications = ref<BappNotification[]>([])
 const notificationError = ref('')
 const acknowledgingNotifications = ref(false)
-const notificationDialog = ref<HTMLDivElement | null>(null)
-const notificationCloseButton = ref<HTMLButtonElement | null>(null)
+const notificationMenu = ref<HTMLDetailsElement | null>(null)
 let notificationTimer: ReturnType<typeof setInterval> | undefined
 let notificationRequest = 0
 async function loadBappNotifications() {
@@ -30,18 +29,10 @@ async function acknowledgeBappNotifications(openBapp = false) {
   try {
     await $fetch('/api/bapp-review/notifications/read', { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { ids: bappNotifications.value.map(item => item.id) } })
     bappNotifications.value = []
+    if (notificationMenu.value) notificationMenu.value.open = false
     if (openBapp) await navigateTo('/cek-bapp')
-  } catch { notificationError.value = 'Notifikasi belum dapat ditutup. Coba lagi.' }
+  } catch { notificationError.value = 'Notifikasi belum dapat ditandai dibaca. Coba lagi.' }
   finally { acknowledgingNotifications.value = false }
-}
-watch(() => bappNotifications.value.length, (count, previous) => { if (count && !previous) nextTick(() => notificationCloseButton.value?.focus()) })
-function onNotificationKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') { event.preventDefault(); void acknowledgeBappNotifications(false); return }
-  if (event.key !== 'Tab') return
-  const buttons = notificationDialog.value?.querySelectorAll<HTMLButtonElement>('button:not([disabled])')
-  if (!buttons?.length) return
-  if (event.shiftKey && document.activeElement === buttons[0]) { event.preventDefault(); buttons[buttons.length - 1]?.focus() }
-  else if (!event.shiftKey && document.activeElement === buttons[buttons.length - 1]) { event.preventDefault(); buttons[0]?.focus() }
 }
 onMounted(() => {
   if (authUser.value?.role !== 'Internal') return
@@ -77,6 +68,18 @@ const navClass = (path: string) => (path === '/hisense' ? route.path.startsWith(
         <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <p class="font-semibold tracking-tight">Dashboard Pemantauan Digitalisasi Pembelajaran SMK</p>
           <div class="flex items-center gap-3 text-sm">
+            <details ref="notificationMenu" class="relative">
+              <summary class="relative grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full text-muted hover:bg-stone-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-700 [&::-webkit-details-marker]:hidden" aria-label="Notifikasi BAPP">
+                <AppIcon name="bell" class="h-5 w-5" :class="{ 'notification-shake text-red-600': bappNotifications.length }" />
+                <span v-if="bappNotifications.length" class="absolute right-0 top-0 grid min-h-5 min-w-5 place-items-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">{{ bappNotifications.length > 99 ? '99+' : bappNotifications.length }}</span>
+              </summary>
+              <div class="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-theme border border-stone-200 bg-white shadow-xl">
+                <div class="border-b border-stone-200 px-4 py-3"><p class="font-semibold">Notifikasi BAPP</p><p class="text-xs text-muted">{{ bappNotifications.length ? `${bappNotifications.length} notifikasi reviu baru` : 'Belum ada sekolah baru.' }}</p></div>
+                <ul v-if="bappNotifications.length" class="max-h-72 divide-y divide-stone-100 overflow-y-auto px-4"><li v-for="item in bappNotifications" :key="item.id" class="flex items-start gap-3 py-3"><AppIcon name="school" class="mt-0.5 h-4 w-4 shrink-0 text-sky-700" /><div class="min-w-0"><p class="font-medium text-ink">{{ item.isRevision ? `Revisi Sekolah ${item.namaSekolah || item.npsn} sudah tersedia` : item.namaSekolah || 'Nama sekolah belum tersedia' }}</p><p class="text-xs text-muted">NPSN {{ item.npsn }} · {{ item.idTransaksi }}</p></div></li></ul>
+                <p v-if="notificationError" role="alert" class="px-4 py-2 text-xs text-red-700">{{ notificationError }}</p>
+                <div v-if="bappNotifications.length" class="flex flex-wrap justify-end gap-2 border-t border-stone-200 px-4 py-3"><button type="button" :disabled="acknowledgingNotifications" class="rounded-theme border border-stone-300 px-3 py-2 text-xs font-medium disabled:opacity-50" @click="acknowledgeBappNotifications(false)">Tandai dibaca</button><button type="button" :disabled="acknowledgingNotifications" class="rounded-theme bg-sky-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50" @click="acknowledgeBappNotifications(true)">Lihat Cek BAPP</button></div>
+              </div>
+            </details>
             <span class="text-muted">{{ authUser.username }}</span>
             <button type="button" :disabled="loggingOut" class="rounded-theme border border-stone-300 px-3 py-2 font-medium hover:bg-stone-200 disabled:opacity-50" @click="logout">
               <AppIcon :name="loggingOut ? 'loading' : 'logout'" :class="{ 'animate-spin': loggingOut }" class="mr-1 h-4 w-4" />{{ loggingOut ? 'Keluar…' : 'Logout' }}
@@ -170,13 +173,15 @@ const navClass = (path: string) => (path === '/hisense' ? route.path.startsWith(
       <slot />
     </div>
     </template>
-    <div v-if="authUser?.role === 'Internal' && bappNotifications.length" ref="notificationDialog" role="alertdialog" aria-modal="true" aria-labelledby="bapp-notification-title" class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4" @keydown="onNotificationKeydown">
-      <div class="w-full max-w-xl overflow-hidden rounded-theme bg-white shadow-2xl">
-        <div class="flex items-start gap-3 border-b border-stone-200 bg-sky-50 px-5 py-5"><span class="grid h-11 w-11 shrink-0 place-items-center rounded-theme bg-sky-700 text-white"><AppIcon name="bell" /></span><div><h2 id="bapp-notification-title" class="text-lg font-semibold text-ink">Terdapat {{ bappNotifications.length }} BAPP baru yang diterapkan untuk anda</h2><p class="mt-1 text-sm text-muted">Daftar sekolah yang baru masuk ke alokasi reviu Anda.</p></div></div>
-        <ul class="max-h-72 divide-y divide-stone-100 overflow-y-auto px-5"><li v-for="item in bappNotifications" :key="item.id" class="flex items-start gap-3 py-3"><AppIcon name="school" class="mt-0.5 h-4 w-4 text-sky-700" /><div class="min-w-0"><p class="font-medium text-ink">{{ item.namaSekolah || 'Nama sekolah belum tersedia' }}</p><p class="text-xs text-muted">NPSN {{ item.npsn }} · {{ item.idTransaksi }}</p></div></li></ul>
-        <p v-if="notificationError" role="alert" class="px-5 pt-3 text-sm text-red-700">{{ notificationError }}</p>
-        <div class="flex flex-wrap justify-end gap-2 border-t border-stone-200 px-5 py-4"><button ref="notificationCloseButton" type="button" :disabled="acknowledgingNotifications" class="rounded-theme border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50" @click="acknowledgeBappNotifications(false)">Tutup</button><button type="button" :disabled="acknowledgingNotifications" class="inline-flex items-center gap-2 rounded-theme bg-sky-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" @click="acknowledgeBappNotifications(true)">Lihat Cek BAPP<AppIcon name="arrow-right" class="h-4 w-4" /></button></div>
-      </div>
-    </div>
   </div>
 </template>
+
+<style scoped>
+@keyframes notification-shake {
+  0%, 88%, 100% { transform: rotate(0); }
+  90%, 94% { transform: rotate(-16deg); }
+  92%, 96% { transform: rotate(16deg); }
+}
+.notification-shake { animation: notification-shake 3s infinite; transform-origin: top center; }
+@media (prefers-reduced-motion: reduce) { .notification-shake { animation: none; } }
+</style>

@@ -51,6 +51,13 @@ const { data: summaryData, pending: summaryPending, error: summaryError, refresh
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined,
   query: { scope: 'mine' }
 })
+let reviewRefreshTimer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  reviewRefreshTimer = setInterval(() => {
+    if (!pending.value && !summaryPending.value) void Promise.all([refresh(), refreshSummary()])
+  }, 60_000)
+})
+onUnmounted(() => { if (reviewRefreshTimer !== undefined) clearInterval(reviewRefreshTimer) })
 const statusOrder = ['INSTALASI SELESAI', 'DITOLAK_REVISI', 'DISETUJUI', 'REVIU APIP', 'SESUAI APIP']
 const statusTabMeta = {
   'INSTALASI SELESAI': { label: 'Perlu Direviu', icon: 'clipboard-check', active: 'border-sky-700 bg-sky-700 text-white', idle: 'border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100' },

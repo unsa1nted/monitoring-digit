@@ -51,6 +51,16 @@ try {
   const notifications = await db.select({ reviewer: bappReviewNotifications.userPetugas, school: bappReviewNotifications.namaSekolah }).from(bappReviewNotifications).where(eq(bappReviewNotifications.idTransaksi, importedId))
   assert.deepEqual(notifications, [{ reviewer: assigned!.reviewer, school: 'Sekolah Impor Uji' }])
   assert.deepEqual(await db.select().from(bappReviewNotifications).where(eq(bappReviewNotifications.idTransaksi, revisionId)), [])
+  await db.update(masterBapp).set({ statusProgress: 'REVISI', hasilAkhirReviu: 'Tidak Sesuai', petugasReviu: username, fotoBapp1: 'Tidak' }).where(eq(masterBapp.idTransaksi, revisionId))
+  const revisionImport = await upload()
+  assert.equal(revisionImport.status, 200, await revisionImport.clone().text())
+  const [revised] = await db.select({ status: masterBapp.statusProgress, result: masterBapp.hasilAkhirReviu, reviewer: masterBapp.petugasReviu, fotoBapp1: masterBapp.fotoBapp1 }).from(masterBapp).where(eq(masterBapp.idTransaksi, revisionId))
+  assert.deepEqual(revised, { status: 'INSTALASI SELESAI', result: null, reviewer: username, fotoBapp1: null })
+  const [revisionNotification] = await db.select({ reviewer: bappReviewNotifications.userPetugas, readAt: bappReviewNotifications.readAt }).from(bappReviewNotifications).where(eq(bappReviewNotifications.idTransaksi, revisionId))
+  assert.deepEqual(revisionNotification, { reviewer: username, readAt: null })
+  const revisionList = await fetch(`${base}/api/bapp-review/notifications`, { headers: { cookie } })
+  const revisionResult = await revisionList.json() as { notifications: Array<{ idTransaksi: string; isRevision: boolean }> }
+  assert.equal(revisionResult.notifications.find(item => item.idTransaksi === revisionId)?.isRevision, true)
   console.log('BAPP notifications passed')
 } finally {
   await db.delete(bappReviewNotifications).where(eq(bappReviewNotifications.idTransaksi, importedId))
