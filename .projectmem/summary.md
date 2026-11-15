@@ -35,7 +35,6 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Approve/reject BAPP menggunakan endpoint POST /direktorat/approve dan /reject dengan token direktorat; reviewer_name berasal dari username akun Internal. Endpoint admin hi-transaksi tidak dipakai untuk reviu. [apps/api/src/hisense.ts:61]
 
 ## Notes
-- feat: Update port
 - feat: Update core
 - Cek BAPP menampilkan REVISI dari master_bapp.petugas_reviu; tab Ditolak (REVISI) selalu terlihat. Kolom sudah_ada_revisi menampilkan badge biru Tidak dan oranye Revisi Tersedia. [apps/web/pages/cek-bapp.vue:51]
 - Cek BAPP Status Progress kini memakai badge berbeda: Instalasi Selesai biru, Revisi merah, Disetujui hijau, Reviu APIP ungu, Sesuai APIP teal; status lain abu-abu. [apps/web/pages/cek-bapp.vue:59]
@@ -45,6 +44,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
+- New feature: feat: update [apps/api/src/bapp-review.ts]
 
 ## Key files
 - `.env.example`
