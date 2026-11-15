@@ -582,7 +582,7 @@ try {
   await reviewHisenseAllocation(id, {
     kode_status_progress: nextStatus,
     reviewer_name: user.username,
-    ...(body.action === 'reject' ? { tag_revisi: reasons.join(', '), catatan_revisi: body.rejectionNote!.trim() } : {})
+    ...(body.action === 'reject' ? { tag_revisi: reasons, catatan_revisi: body.rejectionNote!.trim() } : {})
   })
 } catch (error) {
   context.set.status = 502

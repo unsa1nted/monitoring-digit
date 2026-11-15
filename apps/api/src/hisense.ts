@@ -58,17 +58,18 @@ async function adminToken() {
     return payload.token
 }
 
-export async function reviewHisenseAllocation(id: string, body: { kode_status_progress: 'DISETUJUI' | 'REVISI'; reviewer_name: string; catatan_revisi?: string; tag_revisi?: string }) {
-  let token = await adminToken()
-  const request = () => fetch(`${baseUrl}/hi-transaksi/alokasi/review/${encodeURIComponent(id)}`, {
-    method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'x-active-batch': '3' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(90_000)
+export async function reviewHisenseAllocation(id: string, body: { kode_status_progress: 'DISETUJUI' | 'REVISI'; reviewer_name: string; catatan_revisi?: string; tag_revisi?: string[] }) {
+  let token = await tokenFor('smk')
+  const action = body.kode_status_progress === 'DISETUJUI' ? 'approve' : 'reject'
+  const request = () => fetch(`${baseUrl}/direktorat/${action}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_transaksi: id, reviewer_name: body.reviewer_name, ...(action === 'reject' ? { tag_revisi: body.tag_revisi, catatan_revisi: body.catatan_revisi } : {}) }), signal: AbortSignal.timeout(90_000)
   })
   let response = await request()
   if (response.status === 401) {
     await response.body?.cancel()
-    exportTokenCache = null
-    token = await adminToken()
+    tokenCache.delete('smk')
+    token = await tokenFor('smk')
     response = await request()
   }
   const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null

@@ -12,23 +12,34 @@ process.env.HISENSE_SMK_USERNAME = 'test-user'
 process.env.HISENSE_SMK_PASSWORD = 'test-password'
 const originalFetch = globalThis.fetch
 let logins = 0
+let directorateLogins = 0
 let exports = 0
 let reviews = 0
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input))
+  if (url.pathname === '/api/direktorat/auth/login') {
+    assert.deepEqual(JSON.parse(String(init?.body)), { username: 'test-user', password: 'test-password' })
+    return Response.json({ data: { token: `directorate-token-${++directorateLogins}`, expires_in: '30d' } })
+  }
   if (url.pathname === '/api/hi-auth/login') {
     assert.deepEqual(JSON.parse(String(init?.body)), { username: 'test-user', password: 'test-password' })
     return Response.json({ token: `test-token-${++logins}` })
   }
-  if (url.pathname === '/api/hi-transaksi/alokasi/review/HI-1') {
-    assert.equal(init?.method, 'PUT')
-    assert.equal(new Headers(init.headers).get('authorization'), `Bearer test-token-${logins}`)
-    assert.equal(new Headers(init.headers).get('x-active-batch'), '3')
+  if (url.pathname === '/api/direktorat/approve' || url.pathname === '/api/direktorat/reject') {
+    assert.equal(init?.method, 'POST')
+    assert.equal(new Headers(init.headers).get('authorization'), `Bearer directorate-token-${directorateLogins}`)
     const body = JSON.parse(String(init.body))
+    assert.equal(body.id_transaksi, 'HI-1')
     assert.equal(body.reviewer_name, 'Petugas Uji')
     if (++reviews === 1) return new Response(null, { status: 401 })
-    if (reviews === 2) assert.deepEqual(body, { kode_status_progress: 'DISETUJUI', reviewer_name: 'Petugas Uji' })
-    if (reviews === 3) assert.deepEqual(body, { kode_status_progress: 'REVISI', reviewer_name: 'Petugas Uji', tag_revisi: 'Foto Box Tidak Sesuai/Salah', catatan_revisi: 'Foto box salah' })
+    if (reviews === 2) {
+      assert.equal(url.pathname, '/api/direktorat/approve')
+      assert.deepEqual(body, { id_transaksi: 'HI-1', reviewer_name: 'Petugas Uji' })
+    }
+    if (reviews === 3) {
+      assert.equal(url.pathname, '/api/direktorat/reject')
+      assert.deepEqual(body, { id_transaksi: 'HI-1', reviewer_name: 'Petugas Uji', tag_revisi: ['Foto Box Tidak Sesuai/Salah'], catatan_revisi: 'Foto box salah' })
+    }
     return Response.json({ success: true })
   }
   assert.equal(url.pathname, '/api/hi-transaksi/alokasi/export')
@@ -50,8 +61,8 @@ try {
   await downloadHisenseSmkAllocationExcel()
   assert.equal(logins, 2)
   await reviewHisenseAllocation('HI-1', { kode_status_progress: 'DISETUJUI', reviewer_name: 'Petugas Uji' })
-  assert.equal(logins, 3)
-  await reviewHisenseAllocation('HI-1', { kode_status_progress: 'REVISI', reviewer_name: 'Petugas Uji', tag_revisi: 'Foto Box Tidak Sesuai/Salah', catatan_revisi: 'Foto box salah' })
+  assert.equal(directorateLogins, 2)
+  await reviewHisenseAllocation('HI-1', { kode_status_progress: 'REVISI', reviewer_name: 'Petugas Uji', tag_revisi: ['Foto Box Tidak Sesuai/Salah'], catatan_revisi: 'Foto box salah' })
   assert.equal(reviews, 3)
   console.log('Hisense Excel export and review passed')
 } finally {

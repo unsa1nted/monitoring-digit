@@ -6,6 +6,7 @@ _Last updated: 2026-11-15_
 Nuxt dashboard + Elysia API + MySQL database.
 
 ## Recent issues
+- [DONE] #0043 Hisense menampilkan Reviewer MOE direktoratsmk meski payload review mengirim reviewer_name petugas; selidiki kontrak endpoint dan sumber nilai kolom. [apps/api/src/hisense.ts:61] (fixed)
 - [DONE] #0042 Nama Reviewer MOE pada approve/reject Hisense diduga memakai akun integrasi direktoratsmk, bukan username petugas login. [apps/api/src/bapp-review.ts] (fixed)
 - [DONE] #0041 Impor BAPP gagal saat belum ada petugas reviewer karena notifikasi dibuat tanpa alokasi. [apps/api/src/bapp-review.ts:206] (fixed)
 - [DONE] #0040 Nuxt gagal parse cek-bapp.vue?macro=true: Unterminated string constant setelah perapian UI [apps/web/pages/cek-bapp.vue] (fixed)
@@ -15,8 +16,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [DONE] #0036 Kontrol persentase petugas tidak terlihat pada halaman Kelola BAPP [apps/web/pages/assign-npsn-bapp.vue:135] (fixed)
 - [DONE] #0035 Belum Diperiksa reviewer dihitung dari hasil_akhir_reviu NULL; aturan baru hanya Resubmit Tidak dan Status Progress INSTALASI SELESAI. [apps/api/src/bapp-review.ts:335] (fixed)
 - [DONE] #0034 Sumber angka Belum Diperiksa 16 untuk reviewer rai perlu diperjelas menurut status_progress dan sudah_ada_revisi. [apps/api/src/bapp-review.ts:334] (fixed)
-- [DONE] #0033 Tab REVISI Cek BAPP menunjukkan 0 meski hasil reviu Tidak Sesuai ada; paginasi 5 baris dan nomor tabel selalu mulai dari 1. [apps/api/src/bapp-review.ts:369] (fixed)
-- ...and 32 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
+- ...and 33 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
 - Auto assign dari master_bapp memperbarui assignment NPSN yang cocok dengan reviewer terdaftar; NPSN dengan lebih dari satu petugas_reviu dilewati agar tidak memilih petugas secara acak. [apps/api/src/bapp-review.ts:45]
@@ -32,6 +32,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Cek BAPP memakai AppIcon yang sudah ada, header gelap, tab status berkode warna, dan tabel berpanel; alur data/reviu tetap sama [apps/web/pages/cek-bapp.vue:270]
 - Tabel Petugas Reviewer mengurutkan peringkat berdasarkan jumlah sudahDiperiksa; jumlah alokasi tetap ditampilkan sebagai statistik terpisah [apps/api/src/bapp-review.ts:426]
 - Tabel Petugas Reviewer memuat ulang /api/bapp-dashboard tiap 60 detik saat halaman terbuka; cap waktu WIB berubah hanya setelah permintaan berhasil [apps/web/pages/index.vue:46]
+- Approve/reject BAPP menggunakan endpoint POST /direktorat/approve dan /reject dengan token direktorat; reviewer_name berasal dari username akun Internal. Endpoint admin hi-transaksi tidak dipakai untuk reviu. [apps/api/src/hisense.ts:61]
 
 ## Notes
 - Push
@@ -43,6 +44,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Cek BAPP Status Progress kini memakai badge berbeda: Instalasi Selesai biru, Revisi merah, Disetujui hijau, Reviu APIP ungu, Sesuai APIP teal; status lain abu-abu. [apps/web/pages/cek-bapp.vue:59]
 - gotcha: Direktorat Hisense token hanya untuk /direktorat; approve/reject BAPP memakai /hi-auth/login dan PUT /hi-transaksi/alokasi/review/:id [apps/api/src/hisense.ts:61]
 - New feature: feat: Update add BAPP system [apps/api/drizzle/0013_round_quasimodo.sql]
+- New feature: feat: update [apps/api/src/bapp-review.ts]
 
 ## Key files
 - `.env.example`
