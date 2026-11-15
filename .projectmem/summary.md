@@ -6,6 +6,9 @@ _Last updated: 2026-11-15_
 Nuxt dashboard + Elysia API + MySQL database.
 
 ## Recent issues
+- [OPEN] #0049 Penolakan BAPP ke endpoint direktorat Hisense gagal: column a.kode_direktorat does not exist. [apps/api/src/hisense.ts:61] (open)
+  - Partial attempt: Bandingkan payload aplikasi dengan dokumentasi POST /direktorat/reject; payload sesuai. Error column a.kode_direktorat berasal dari query SQL Hisense, bukan validasi payload lokal. [apps/api/src/hisense.ts:64]
+- [DONE] #0050 Perlu memastikan Reviewer MOE Hisense cocok dengan petugas yang menyetujui, serta menyimpan riwayat sinkron Excel otomatis dengan waktu dan jumlah alokasi per petugas. [apps/api/src/bapp-review.ts] (fixed)
 - [DONE] #0048 Foto di modal reviu BAPP tampil terlalu penuh; perlu ukuran awal yang fit dan tetap mendukung zoom. [apps/web/pages/cek-bapp.vue:430] (fixed)
 - [DONE] #0047 Kotak catatan tetap tidak tampil di modal Reviu BAPP walau status Sedang Ditolak terlihat; periksa perbedaan data list dan detail Hisense. [apps/web/pages/cek-bapp.vue:516] (fixed)
 - [DONE] #0046 Bagian atas modal reviu BAPP masih terpotong dan modal tidak memenuhi layar setelah perbaikan overflow. [apps/web/pages/cek-bapp.vue:375] (fixed)
@@ -15,8 +18,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [DONE] #0042 Nama Reviewer MOE pada approve/reject Hisense diduga memakai akun integrasi direktoratsmk, bukan username petugas login. [apps/api/src/bapp-review.ts] (fixed)
 - [DONE] #0041 Impor BAPP gagal saat belum ada petugas reviewer karena notifikasi dibuat tanpa alokasi. [apps/api/src/bapp-review.ts:206] (fixed)
 - [DONE] #0040 Nuxt gagal parse cek-bapp.vue?macro=true: Unterminated string constant setelah perapian UI [apps/web/pages/cek-bapp.vue] (fixed)
-- [DONE] #0039 Catatan popup penolakan harus mengikuti catatan foto Tidak Sesuai; penampil foto belum punya zoom dan layar penuh [apps/web/pages/cek-bapp.vue] (fixed)
-- ...and 38 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
+- ...and 39 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
 - Auto assign dari master_bapp memperbarui assignment NPSN yang cocok dengan reviewer terdaftar; NPSN dengan lebih dari satu petugas_reviu dilewati agar tidak memilih petugas secara acak. [apps/api/src/bapp-review.ts:45]
@@ -33,6 +35,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Tabel Petugas Reviewer mengurutkan peringkat berdasarkan jumlah sudahDiperiksa; jumlah alokasi tetap ditampilkan sebagai statistik terpisah [apps/api/src/bapp-review.ts:426]
 - Tabel Petugas Reviewer memuat ulang /api/bapp-dashboard tiap 60 detik saat halaman terbuka; cap waktu WIB berubah hanya setelah permintaan berhasil [apps/web/pages/index.vue:46]
 - Approve/reject BAPP menggunakan endpoint POST /direktorat/approve dan /reject dengan token direktorat; reviewer_name berasal dari username akun Internal. Endpoint admin hi-transaksi tidak dipakai untuk reviu. [apps/api/src/hisense.ts:61]
+- Catat tiap sinkron unduhan Hisense yang berhasil (otomatis/manual) dalam bapp_hisense_sync_runs, termasuk snapshot jumlah alokasi per reviewer; impor file manual tidak masuk riwayat ini. [apps/api/src/db/schema.ts:59]
 
 ## Notes
 - feat: Update core

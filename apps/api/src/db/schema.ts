@@ -56,6 +56,16 @@ export const bappReviewNotifications = mysqlTable('bapp_review_notifications', {
   readAt: timestamp('read_at')
 }, table => ({ reviewerUnread: index('bapp_review_notifications_reviewer_unread').on(table.userPetugas, table.readAt) }))
 
+export const bappHisenseSyncRuns = mysqlTable('bapp_hisense_sync_runs', {
+  id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
+  source: mysqlEnum('source', ['automatic', 'manual']).notNull(),
+  syncedAt: timestamp('synced_at').defaultNow().notNull(),
+  created: int('created').notNull(),
+  updated: int('updated').notNull(),
+  allocated: int('allocated').notNull(),
+  distribution: json('distribution').$type<Array<{ userPetugas: string; namaPetugas: string; count: number }>>().notNull()
+})
+
 export const bappStorages = mysqlTable('bapp_storages', {
   id: bigint('id', { mode: 'number', unsigned: true }).autoincrement().primaryKey(),
   name: varchar('name', { length: 120 }).notNull().unique(),

@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia'
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db, pool } from './db/index.js'
-import { bappReviewNotifications, bappReviewerAssignments, masterBapp, petugasReviewer } from './db/schema.js'
+import { bappHisenseSyncRuns, bappReviewNotifications, bappReviewerAssignments, masterBapp, petugasReviewer } from './db/schema.js'
 import { getSessionUser } from './auth.js'
 import { recordActivity } from './activity.js'
 import { downloadHisenseSmkAllocationExcel, getHisenseSmkPages, getHisenseTransaction, reviewHisenseAllocation, type HisenseTransaction } from './hisense.js'
@@ -181,13 +181,15 @@ export async function collectHisenseReviewerUpdates(masters: Array<{ idTransaksi
 
 
 type BappImportProgress = (percent: number, stage: string) => void
-async function importBappExcel(buffer: Buffer, progress: BappImportProgress = () => {}) {
+export async function importBappExcel(buffer: Buffer, progress: BappImportProgress = () => {}, source?: 'automatic' | 'manual') {
   progress(45, 'Membaca Excel Hisense')
   const parsed = await parseBappExcel(buffer)
   progress(50, 'Memeriksa transaksi baru')
   const existing = new Set((await db.select({ idTransaksi: masterBapp.idTransaksi }).from(masterBapp)).map(row => row.idTransaksi))
   const newReviewRows = parsed.rows.filter(row => !existing.has(row.idTransaksi) && row.sudahAdaRevisi === 'Tidak' && row.statusProgress === 'INSTALASI SELESAI')
-  const allocations = distributeNewBappRows(newReviewRows, await db.select({ userPetugas: petugasReviewer.userPetugas, alokasiPersen: petugasReviewer.alokasiPersen }).from(petugasReviewer))
+  const reviewers = await db.select({ userPetugas: petugasReviewer.userPetugas, namaPetugas: petugasReviewer.namaPetugas, alokasiPersen: petugasReviewer.alokasiPersen }).from(petugasReviewer)
+  const allocations = distributeNewBappRows(newReviewRows, reviewers)
+  const created = parsed.rows.filter(row => !existing.has(row.idTransaksi)).length
   await db.transaction(async tx => {
     for (let index = 0; index < parsed.rows.length; index++) {
       const row = parsed.rows[index]!
@@ -207,16 +209,23 @@ async function importBappExcel(buffer: Buffer, progress: BappImportProgress = ()
     if (assignedRows.length) await tx.insert(bappReviewNotifications).values(assignedRows.map(row => ({
       idTransaksi: row.idTransaksi, userPetugas: allocations.get(row.idTransaksi)!, namaSekolah: row.namaSekolah, npsn: row.npsn
     }))).onDuplicateKeyUpdate({ set: { idTransaksi: sql`${bappReviewNotifications.idTransaksi}` } })
+    if (source) {
+      const counts = new Map<string, number>()
+      for (const username of allocations.values()) counts.set(username, (counts.get(username) ?? 0) + 1)
+      await tx.insert(bappHisenseSyncRuns).values({
+        source, created, updated: parsed.rows.length - created, allocated: allocations.size,
+        distribution: reviewers.map(reviewer => ({ userPetugas: reviewer.userPetugas, namaPetugas: reviewer.namaPetugas, count: counts.get(reviewer.userPetugas) ?? 0 }))
+      })
+    }
   })
   progress(100, 'Sinkronisasi selesai')
-  const created = parsed.rows.filter(row => !existing.has(row.idTransaksi)).length
   return { success: true, created, updated: parsed.rows.length - created, allocated: allocations.size, skippedStatus: parsed.skippedStatus, skippedDuplicate: parsed.skippedDuplicate }
 }
 
 type HisenseSyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: Awaited<ReturnType<typeof importBappExcel>>; message?: string }
 let hisenseSyncJob: HisenseSyncJob | null = null
 
-export async function startHisenseSyncJob(onSuccess?: (result: Awaited<ReturnType<typeof importBappExcel>>) => Promise<void>) {
+export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'automatic', onSuccess?: (result: Awaited<ReturnType<typeof importBappExcel>>) => Promise<void>) {
   if (hisenseSyncJob?.status === 'running') return null
   const connection = await pool.getConnection()
   try {
@@ -231,7 +240,7 @@ export async function startHisenseSyncJob(onSuccess?: (result: Awaited<ReturnTyp
         job.percent = total ? Math.min(40, Math.round(received / total * 40)) : 5
         job.stage = `Mengunduh Excel Hisense${total ? ` (${Math.round(received / total * 100)}%)` : ''}`
       })
-      job.result = await importBappExcel(buffer, (percent, stage) => { job.percent = percent; job.stage = stage })
+      job.result = await importBappExcel(buffer, (percent, stage) => { job.percent = percent; job.stage = stage }, source)
       job.status = 'done'
       if (onSuccess) await onSuccess(job.result).catch(console.error)
     } catch (error) {
@@ -332,9 +341,10 @@ export const adminBappReview = new Elysia({ prefix: '/api/admin/bapp-review' })
   }
   }, { body: t.Object({ file: t.File() }) })
 .get('/sync-hisense', () => hisenseSyncJob)
+.get('/sync-hisense/history', async () => ({ runs: await db.select().from(bappHisenseSyncRuns).orderBy(desc(bappHisenseSyncRuns.id)).limit(20) }))
 .post('/sync-hisense', async context => {
   const actor = await getSessionUser(context)
-  const job = await startHisenseSyncJob(async result => {
+  const job = await startHisenseSyncJob('manual', async result => {
     if (actor) await recordActivity(context, actor, 'BAPP_HISENSE_SYNCED', `${result.created + result.updated} transaksi`)
   })
   if (!job) { context.set.status = 409; return { message: 'Sinkronisasi Hisense sedang berjalan.' } }

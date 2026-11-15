@@ -18,6 +18,13 @@ const savingReviewer = ref(false)
 const savingAllocation = ref<number | null>(null)
 const syncingHisenseReviewers = ref(false)
 type SyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: { created: number; updated: number; allocated: number; skippedStatus: number; skippedDuplicate: number }; message?: string }
+type SyncRun = { id: number; source: 'automatic' | 'manual'; syncedAt: string; created: number; updated: number; allocated: number; distribution: Array<{ userPetugas: string; namaPetugas: string; count: number }> }
+const { data: historyData, error: historyError, refresh: refreshHistory } = await useFetch<{ runs: SyncRun[] }>('/api/admin/bapp-review/sync-hisense/history', {
+  baseURL: config.public.apiBase,
+  credentials: 'include',
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+})
+const syncDate = (value: string) => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 const syncJob = ref<SyncJob | null>(null)
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 const message = ref('')
@@ -48,6 +55,7 @@ async function pollHisenseSync() {
       const result = syncJob.value.result
       message.value = `${result.created} transaksi baru, ${result.allocated} dibagi ke petugas, ${result.updated} diperbarui dari Hisense.`
       await refresh()
+      await refreshHistory()
     } else if (syncJob.value?.status === 'error' && syncJob.value.id !== lastReportedSyncId) {
       lastReportedSyncId = syncJob.value.id
       problem.value = syncJob.value.message ?? 'Sinkronisasi Hisense gagal.'
@@ -147,6 +155,24 @@ async function syncHisenseReviewers() {
         <div v-if="syncJob?.status === 'running'" role="status" class="space-y-1 text-sm text-muted">
           <p>{{ syncJob.stage }} — {{ syncJob.percent }}%</p>
           <progress :value="syncJob.percent" max="100" class="h-3 w-full accent-sky-600">{{ syncJob.percent }}%</progress>
+        </div>
+        <div class="border-t border-stone-200 pt-4">
+          <h3 class="font-semibold">Riwayat sinkron Hisense</h3>
+          <p v-if="historyError" class="mt-2 text-sm text-red-700">Riwayat sinkron belum dapat dimuat.</p>
+          <p v-else-if="!historyData?.runs?.length" class="mt-2 text-sm text-muted">Belum ada sinkronisasi Hisense yang selesai.</p>
+          <div v-else class="mt-3 space-y-2">
+            <details v-for="run in historyData.runs" :key="run.id" class="rounded-theme border border-stone-200 bg-stone-50 p-3">
+              <summary class="cursor-pointer text-sm font-medium">{{ syncDate(run.syncedAt) }} WIB · {{ run.source === 'automatic' ? 'Otomatis' : 'Manual' }} · {{ run.allocated }} BAPP baru dibagikan</summary>
+              <div class="mt-3 border-t border-stone-200 pt-3 text-sm">
+                <p class="text-muted">{{ run.created }} transaksi baru, {{ run.updated }} transaksi diperbarui.</p>
+                <p class="mt-2 font-medium">Pembagian per petugas</p>
+                <ul v-if="run.distribution.length" class="mt-2 max-h-64 divide-y divide-stone-200 overflow-y-auto">
+                  <li v-for="item in run.distribution" :key="item.userPetugas" class="flex justify-between gap-3 py-1.5"><span>{{ item.namaPetugas }} ({{ item.userPetugas }})</span><strong>{{ item.count }} BAPP</strong></li>
+                </ul>
+                <p v-else class="mt-2 text-muted">Belum ada petugas reviewer.</p>
+              </div>
+            </details>
+          </div>
         </div>
       </section>
       <form class="space-y-3 rounded-theme border border-stone-200 bg-white p-5 shadow-card" @submit.prevent="importExcel">
