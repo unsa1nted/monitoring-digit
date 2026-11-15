@@ -6,9 +6,9 @@ _Last updated: 2026-11-15_
 Nuxt dashboard + Elysia API + MySQL database.
 
 ## Recent issues
-- [OPEN] #0049 Penolakan BAPP ke endpoint direktorat Hisense gagal: column a.kode_direktorat does not exist. [apps/api/src/hisense.ts:61] (open)
-  - Partial attempt: Bandingkan payload aplikasi dengan dokumentasi POST /direktorat/reject; payload sesuai. Error column a.kode_direktorat berasal dari query SQL Hisense, bukan validasi payload lokal. [apps/api/src/hisense.ts:64]
+- [DONE] #0051 Penolakan Hisense perlu memakai PUT /hi-transaksi/alokasi/review/:id dengan tag_revisi string; contoh memakai token StaffSMK, sementara aplikasi memakai token Direktorat SMK. [apps/api/src/hisense.ts:61] (fixed)
 - [DONE] #0050 Perlu memastikan Reviewer MOE Hisense cocok dengan petugas yang menyetujui, serta menyimpan riwayat sinkron Excel otomatis dengan waktu dan jumlah alokasi per petugas. [apps/api/src/bapp-review.ts] (fixed)
+- [DONE] #0049 Penolakan BAPP ke endpoint direktorat Hisense gagal: column a.kode_direktorat does not exist. [apps/api/src/hisense.ts:61] (fixed)
 - [DONE] #0048 Foto di modal reviu BAPP tampil terlalu penuh; perlu ukuran awal yang fit dan tetap mendukung zoom. [apps/web/pages/cek-bapp.vue:430] (fixed)
 - [DONE] #0047 Kotak catatan tetap tidak tampil di modal Reviu BAPP walau status Sedang Ditolak terlihat; periksa perbedaan data list dan detail Hisense. [apps/web/pages/cek-bapp.vue:516] (fixed)
 - [DONE] #0046 Bagian atas modal reviu BAPP masih terpotong dan modal tidak memenuhi layar setelah perbaikan overflow. [apps/web/pages/cek-bapp.vue:375] (fixed)
@@ -16,9 +16,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [DONE] #0044 Modal reviu BAPP tampak terpotong; perlu notifikasi sukses, catatan penolakan/revisi sebelumnya, dan perpindahan foto otomatis setelah penilaian. [apps/web/pages/cek-bapp.vue] (fixed)
 - [DONE] #0043 Hisense menampilkan Reviewer MOE direktoratsmk meski payload review mengirim reviewer_name petugas; selidiki kontrak endpoint dan sumber nilai kolom. [apps/api/src/hisense.ts:61] (fixed)
 - [DONE] #0042 Nama Reviewer MOE pada approve/reject Hisense diduga memakai akun integrasi direktoratsmk, bukan username petugas login. [apps/api/src/bapp-review.ts] (fixed)
-- [DONE] #0041 Impor BAPP gagal saat belum ada petugas reviewer karena notifikasi dibuat tanpa alokasi. [apps/api/src/bapp-review.ts:206] (fixed)
-- [DONE] #0040 Nuxt gagal parse cek-bapp.vue?macro=true: Unterminated string constant setelah perapian UI [apps/web/pages/cek-bapp.vue] (fixed)
-- ...and 39 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
+- ...and 41 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
 - Auto assign dari master_bapp memperbarui assignment NPSN yang cocok dengan reviewer terdaftar; NPSN dengan lebih dari satu petugas_reviu dilewati agar tidak memilih petugas secara acak. [apps/api/src/bapp-review.ts:45]
@@ -34,11 +32,10 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Cek BAPP memakai AppIcon yang sudah ada, header gelap, tab status berkode warna, dan tabel berpanel; alur data/reviu tetap sama [apps/web/pages/cek-bapp.vue:270]
 - Tabel Petugas Reviewer mengurutkan peringkat berdasarkan jumlah sudahDiperiksa; jumlah alokasi tetap ditampilkan sebagai statistik terpisah [apps/api/src/bapp-review.ts:426]
 - Tabel Petugas Reviewer memuat ulang /api/bapp-dashboard tiap 60 detik saat halaman terbuka; cap waktu WIB berubah hanya setelah permintaan berhasil [apps/web/pages/index.vue:46]
-- Approve/reject BAPP menggunakan endpoint POST /direktorat/approve dan /reject dengan token direktorat; reviewer_name berasal dari username akun Internal. Endpoint admin hi-transaksi tidak dipakai untuk reviu. [apps/api/src/hisense.ts:61]
 - Catat tiap sinkron unduhan Hisense yang berhasil (otomatis/manual) dalam bapp_hisense_sync_runs, termasuk snapshot jumlah alokasi per reviewer; impor file manual tidak masuk riwayat ini. [apps/api/src/db/schema.ts:59]
+- Approve tetap POST /direktorat/approve; reject memakai PUT /hi-transaksi/alokasi/review/:id dengan token hi-auth bawaan sistem, tag_revisi string, dan reviewer_name username login. Hisense dapat menulis reviewer dari identitas token, sehingga nama remote belum terjamin sama. [apps/api/src/hisense.ts:61]
 
 ## Notes
-- feat: Update core
 - Cek BAPP menampilkan REVISI dari master_bapp.petugas_reviu; tab Ditolak (REVISI) selalu terlihat. Kolom sudah_ada_revisi menampilkan badge biru Tidak dan oranye Revisi Tersedia. [apps/web/pages/cek-bapp.vue:51]
 - Cek BAPP Status Progress kini memakai badge berbeda: Instalasi Selesai biru, Revisi merah, Disetujui hijau, Reviu APIP ungu, Sesuai APIP teal; status lain abu-abu. [apps/web/pages/cek-bapp.vue:59]
 - gotcha: Direktorat Hisense token hanya untuk /direktorat; approve/reject BAPP memakai /hi-auth/login dan PUT /hi-transaksi/alokasi/review/:id [apps/api/src/hisense.ts:61]
@@ -48,6 +45,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: update [apps/api/src/bapp-review.ts]
+- New feature: feat : Update [apps/api/drizzle/0020_busy_starbolt.sql]
 
 ## Key files
 - `.env.example`

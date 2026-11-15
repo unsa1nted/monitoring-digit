@@ -59,17 +59,22 @@ async function adminToken() {
 }
 
 export async function reviewHisenseAllocation(id: string, body: { kode_status_progress: 'DISETUJUI' | 'REVISI'; reviewer_name: string; catatan_revisi?: string; tag_revisi?: string[] }) {
-  let token = await tokenFor('smk')
-  const action = body.kode_status_progress === 'DISETUJUI' ? 'approve' : 'reject'
-  const request = () => fetch(`${baseUrl}/direktorat/${action}`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_transaksi: id, reviewer_name: body.reviewer_name, ...(action === 'reject' ? { tag_revisi: body.tag_revisi, catatan_revisi: body.catatan_revisi } : {}) }), signal: AbortSignal.timeout(90_000)
+  const rejecting = body.kode_status_progress === 'REVISI'
+  let token = rejecting ? await adminToken() : await tokenFor('smk')
+  const request = () => fetch(rejecting ? `${baseUrl}/hi-transaksi/alokasi/review/${encodeURIComponent(id)}` : `${baseUrl}/direktorat/approve`, {
+    method: rejecting ? 'PUT' : 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(rejecting ? { 'x-active-batch': '3' } : {}) },
+    body: JSON.stringify(rejecting
+      ? { kode_status_progress: 'REVISI', catatan_revisi: body.catatan_revisi, tag_revisi: body.tag_revisi?.join(', '), reviewer_name: body.reviewer_name }
+      : { id_transaksi: id, reviewer_name: body.reviewer_name }),
+    signal: AbortSignal.timeout(90_000)
   })
   let response = await request()
   if (response.status === 401) {
     await response.body?.cancel()
-    tokenCache.delete('smk')
-    token = await tokenFor('smk')
+    if (rejecting) exportTokenCache = null
+    else tokenCache.delete('smk')
+    token = rejecting ? await adminToken() : await tokenFor('smk')
     response = await request()
   }
   const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null
