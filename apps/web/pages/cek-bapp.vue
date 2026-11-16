@@ -110,6 +110,7 @@ const detailError = ref('')
 const photoIndex = ref(0)
 const photoViewer = ref<HTMLDivElement | null>(null)
 const photoViewport = ref<HTMLDivElement | null>(null)
+const photoImage = ref<HTMLImageElement | null>(null)
 const photoNoteInput = ref<HTMLInputElement | null>(null)
 const photoZoom = ref(1)
 const photoFullscreen = ref(false)
@@ -128,10 +129,16 @@ const hisenseReviewStatus = computed(() => {
 })
 const repairNote = computed(() => [...(detail.value?.riwayat_revisi_moe ?? [])].reverse().find(item => item.catatan_perbaikan?.trim())?.catatan_perbaikan?.trim())
 const currentPhotoUrl = computed(() => detailMatchesSerial.value ? photo(detail.value, currentPhoto.value.key) : null)
-watch([photoIndex, selectedSerial, detail], () => {
-  imageLoading.value = Boolean(currentPhotoUrl.value)
+watch([photoIndex, selectedSerial, detail], async () => {
+  const url = currentPhotoUrl.value
+  imageLoading.value = Boolean(url)
   imageError.value = false
   photoZoom.value = 1
+  await nextTick()
+  if (url && url === currentPhotoUrl.value && photoImage.value?.src === url && photoImage.value.complete) {
+    imageLoading.value = false
+    imageError.value = !photoImage.value.naturalWidth
+  }
 }, { flush: 'sync' })
 const reviewedCount = computed(() => photoFields.filter(field => reviewForm[field.reviewKey]).length)
 const detailFields = computed(() => {
@@ -277,13 +284,21 @@ function advanceAfterRejectionNote() {
 function onRejectionNoteBlur(event: FocusEvent) {
   if (!(event.relatedTarget instanceof HTMLButtonElement)) advanceAfterRejectionNote()
 }
-function onPhotoLoad() {
+function onPhotoLoad(event: Event) {
+  const image = photoImage.value
+  if (event.target !== image || image?.src !== currentPhotoUrl.value) return
   imageLoading.value = false
   const next = photoFields[photoIndex.value + 1]
   if (next && detailMatchesSerial.value) {
     const url = photo(detail.value, next.key)
     if (url && !prefetchedPhotos.has(url)) { const image = new Image(); image.src = url; prefetchedPhotos.set(url, image) }
   }
+}
+function onPhotoError(event: Event) {
+  const image = photoImage.value
+  if (event.target !== image || image?.src !== currentPhotoUrl.value) return
+  imageLoading.value = false
+  imageError.value = true
 }
 function setPhotoZoom(next: number) {
   photoZoom.value = Math.max(1, Math.min(4, next))
@@ -367,6 +382,7 @@ async function continueToNextReview() {
   try {
     const result = await $fetch<{ data: ReviewRow[] }>('/api/bapp-review', { baseURL: config.public.apiBase, credentials: 'include', query: { status: 'INSTALASI SELESAI', page: 1 } })
     await closeReview()
+    await nextTick()
     const next = result.data[0]
     if (next) {
       selectStatus('INSTALASI SELESAI')
@@ -514,11 +530,11 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if
                 <div ref="photoViewer" class="relative min-h-0 flex-1 overflow-hidden rounded-theme bg-stone-900"
                   @fullscreenchange="onPhotoFullscreenChange">
                   <div ref="photoViewport" class="flex h-full w-full overflow-auto p-4 sm:p-8">
-                    <img v-if="currentPhotoUrl && !imageError" :key="`${selectedSerial}:${currentPhoto.key}`"
+                    <img v-if="currentPhotoUrl && !imageError" :key="`${detail?.id_transaksi}:${currentPhoto.key}`" ref="photoImage"
                       :src="currentPhotoUrl" :alt="`${currentPhoto.label} · ${selectedSerial}`"
                       :style="{ width: `${photoZoom * 100}%`, height: `${photoZoom * 100}%`, maxWidth: `${photoZoom * 840}px`, maxHeight: `${photoZoom * 560}px` }"
                       class="m-auto block shrink-0 object-contain" :class="imageLoading ? 'opacity-0' : 'opacity-100'"
-                      @load="onPhotoLoad" @error="imageLoading = false; imageError = true">
+                      @load="onPhotoLoad" @error="onPhotoError">
                   </div>
                   <div
                     class="absolute right-3 top-3 z-20 flex items-center gap-1 rounded-theme bg-stone-950/80 p-1 text-xs text-white">

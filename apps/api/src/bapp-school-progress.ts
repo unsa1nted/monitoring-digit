@@ -89,17 +89,9 @@ export async function syncClaimedSchoolCount(npsn: string, claimedAt: Date, look
   }
 }
 
-let running = false
-export async function processSchoolCounts() {
-  if (running) return
-  running = true
-  try {
-    await db.update(bappSchoolCounts).set({ status: 'pending', claimedAt: null }).where(and(eq(bappSchoolCounts.status, 'checking'), or(isNull(bappSchoolCounts.claimedAt), lt(bappSchoolCounts.claimedAt, new Date(Date.now() - 5 * 60_000)))))
-    const jobs = await db.select({ npsn: bappSchoolCounts.npsn }).from(bappSchoolCounts).where(eq(bappSchoolCounts.status, 'pending')).limit(2)
-    await Promise.all(jobs.map(async job => {
-      const claimedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
-      const [claim] = await db.update(bappSchoolCounts).set({ status: 'checking', claimedAt }).where(and(eq(bappSchoolCounts.npsn, job.npsn), eq(bappSchoolCounts.status, 'pending')))
-      if (claim.affectedRows) await syncClaimedSchoolCount(job.npsn, claimedAt)
-    }))
-  } finally { running = false }
+export async function checkSchoolCount(npsn: string) {
+  await db.update(bappSchoolCounts).set({ status: 'pending', claimedAt: null }).where(and(eq(bappSchoolCounts.npsn, npsn), eq(bappSchoolCounts.status, 'checking'), or(isNull(bappSchoolCounts.claimedAt), lt(bappSchoolCounts.claimedAt, new Date(Date.now() - 5 * 60_000)))))
+  const claimedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
+  const [claim] = await db.update(bappSchoolCounts).set({ status: 'checking', claimedAt }).where(and(eq(bappSchoolCounts.npsn, npsn), eq(bappSchoolCounts.status, 'pending')))
+  if (claim.affectedRows) await syncClaimedSchoolCount(npsn, claimedAt)
 }

@@ -1,10 +1,7 @@
-import { and, eq, lt, or, isNull } from 'drizzle-orm'
+import { and, eq, isNull, lt, or } from 'drizzle-orm'
 import { db } from './db/index.js'
 import { bappScans, bappStorages } from './db/schema.js'
 import { getHisenseBySerialNumber } from './hisense.js'
-import { processSchoolCounts } from './bapp-school-progress.js'
-
-let running = false
 
 export async function validateClaimedBappScan(scan: { id: number; barcode: string }, claimedAt: Date, lookup = getHisenseBySerialNumber) {
   const claim = and(eq(bappScans.id, scan.id), eq(bappScans.validationStatus, 'checking'), eq(bappScans.claimedAt, claimedAt))
@@ -28,30 +25,11 @@ export async function validateClaimedBappScan(scan: { id: number; barcode: strin
   }
 }
 
-// Pending work lives in MySQL, so restarting the API does not lose verification jobs.
-export async function processBappValidations() {
-  if (running) return
-  running = true
-  try {
-    const stale = new Date(Date.now() - 5 * 60_000)
-    await db.update(bappScans).set({ validationStatus: 'pending', claimedAt: null }).where(and(eq(bappScans.validationStatus, 'checking'), or(lt(bappScans.claimedAt, stale), isNull(bappScans.claimedAt))))
-    const pending = await db.select({ id: bappScans.id, barcode: bappScans.barcode }).from(bappScans).where(eq(bappScans.validationStatus, 'pending')).orderBy(bappScans.id).limit(3)
-    await Promise.all(pending.map(async scan => {
-      const claimedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
-      const [claim] = await db.update(bappScans).set({ validationStatus: 'checking', claimedAt }).where(and(eq(bappScans.id, scan.id), eq(bappScans.validationStatus, 'pending')))
-      if (!claim.affectedRows) return
-      await validateClaimedBappScan(scan, claimedAt)
-    }))
-  } finally { running = false }
-}
-
-export function startBappValidationWorker() {
-  const run = () => {
-    void processBappValidations().catch(error => console.error('Bapp verification worker:', error))
-    void processSchoolCounts().catch(error => console.error('Bapp school worker:', error))
-  }
-  const timer = setInterval(run, 2000)
-  timer.unref()
-  run()
-  return timer
+export async function checkBappScan(id: number) {
+  await db.update(bappScans).set({ validationStatus: 'pending', claimedAt: null }).where(and(eq(bappScans.id, id), eq(bappScans.validationStatus, 'checking'), or(isNull(bappScans.claimedAt), lt(bappScans.claimedAt, new Date(Date.now() - 5 * 60_000)))))
+  const [scan] = await db.select({ id: bappScans.id, barcode: bappScans.barcode }).from(bappScans).where(eq(bappScans.id, id)).limit(1)
+  if (!scan) return
+  const claimedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
+  const [claim] = await db.update(bappScans).set({ validationStatus: 'checking', claimedAt }).where(and(eq(bappScans.id, id), eq(bappScans.validationStatus, 'pending')))
+  if (claim.affectedRows) await validateClaimedBappScan(scan, claimedAt)
 }

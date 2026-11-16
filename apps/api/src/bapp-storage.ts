@@ -4,7 +4,8 @@ import { db } from './db/index.js'
 import { bappScans, bappStorages, bappFolders, users } from './db/schema.js'
 import { getSessionUser } from './auth.js'
 import { recordActivity } from './activity.js'
-import { loadSchoolProgress, queueSchoolCount } from './bapp-school-progress.js'
+import { checkSchoolCount, loadSchoolProgress, queueSchoolCount } from './bapp-school-progress.js'
+import { checkBappScan } from './bapp-validation.js'
 
 const duplicateScan = sql`exists (select 1 from bapp_scans earlier_scan where earlier_scan.barcode = ${bappScans.barcode} and earlier_scan.id < ${bappScans.id})`
 async function scanIsDuplicate(id: number) {
@@ -109,6 +110,7 @@ export const bappStorageRoutes = new Elysia({ prefix: '/api/bapp-fisik/storages'
     if (!scan) { context.set.status = 404; return { message: 'Scan tidak ditemukan.' } }
     if (scan.vendor !== 'Hisense' || scan.status !== 'valid' || !scan.npsn) { context.set.status = 400; return { message: 'NPSN serial number Hisense belum terverifikasi.' } }
     await queueSchoolCount(scan.npsn, true)
+    await checkSchoolCount(scan.npsn)
     return { success: true }
   })
   .post('/:id/scans/:scanId/recheck', async (context) => {
@@ -120,6 +122,7 @@ export const bappStorageRoutes = new Elysia({ prefix: '/api/bapp-fisik/storages'
     if (scan.validationStatus !== 'checking' && scan.validationStatus !== 'pending') {
       await db.update(bappScans).set({ validationStatus: 'pending', validationMessage: null, checkedAt: null, claimedAt: null, schoolName: null, npsn: null }).where(and(eq(bappScans.id, scanId), eq(bappScans.validationStatus, scan.validationStatus)))
     }
+    await checkBappScan(scanId)
     return { success: true }
   })
   .post('/', async (context) => {

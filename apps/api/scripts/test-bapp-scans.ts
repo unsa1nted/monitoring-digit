@@ -158,8 +158,8 @@ try {
     if (outcome === 'valid') assert.equal(row.npsn, '00000123')
     if (outcome === 'error') {
       assert.equal((await request(`/api/bapp-fisik/storages/${storageIds[2]}/scans/${id}/recheck`, 'POST', undefined, internal)).status, 200)
-      const [requeued] = await db.select().from(bappScans).where(eq(bappScans.id, id))
-      assert.ok(['pending', 'checking'].includes(requeued.validationStatus))
+      const [rechecked] = await db.select().from(bappScans).where(eq(bappScans.id, id))
+      assert.ok(['valid', 'invalid', 'error'].includes(rechecked.validationStatus))
     }
   }
   console.log('PASS: persistence, role restrictions, idempotent retries, concurrent scans, global duplicates, unique counts, validation outcomes and recheck.')

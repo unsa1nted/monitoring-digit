@@ -45,7 +45,8 @@ const { data, pending, error, refresh } = await useFetch<DetailResponse>(() => `
   baseURL: config.public.apiBase,
   credentials: 'include',
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined,
-  watch: false
+  watch: false,
+  immediate: false
 })
 const syncLatest = async () => {
   refreshing.value = true
@@ -93,7 +94,7 @@ const recordDate = (record: ShippingRecord) => record.waktu_tiba || record.waktu
         </div>
         <button
           class="rounded-theme border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="refreshing || pending" @click="syncLatest"><AppIcon name="refresh" class="mr-2 h-4 w-4" :class="{ 'animate-spin': refreshing || pending }" />{{ refreshing ? 'Menyinkronkan…' : 'Sinkron Data'
+          :disabled="refreshing || pending" @click="syncLatest"><AppIcon name="refresh" class="mr-2 h-4 w-4" :class="{ 'animate-spin': refreshing || pending }" />{{ refreshing ? 'Mengambil data…' : data ? 'Sinkron Data' : 'Muat detail'
           }}</button>
       </div>
     </header>
@@ -123,6 +124,7 @@ const recordDate = (record: ShippingRecord) => record.waktu_tiba || record.waktu
       </div>
       <div v-else-if="error || data?.success === false" class="rounded-theme bg-red-50 p-6 text-sm text-red-700">{{
         data?.message || 'Detail pengiriman belum dapat diambil.' }}</div>
+      <p v-else-if="!data" class="rounded-theme border border-stone-200 bg-white p-6 text-sm text-muted shadow-card">Klik Muat detail untuk mengambil data transaksi dari Hisense.</p>
       <template v-else-if="transaction">
         <section class="rounded-theme border border-stone-200 bg-white p-6 shadow-card sm:p-8">
           <div class="flex flex-col justify-between gap-4 border-b border-stone-100 pb-6 sm:flex-row sm:items-start">

@@ -13,14 +13,14 @@ const summaryHeading = ref<HTMLElement | null>(null)
 const schoolsSection = ref<HTMLElement | null>(null)
 const { data, status, error, refresh } = await useFetch<HisenseProgressResponse>('/api/hisense/province-progress', {
   key: `hisense-progress:${authUser.value?.id}:${authUser.value?.role}:${authUser.value?.province}`,
-  baseURL: config.public.apiBase, credentials: 'include', server: false, lazy: true,
+  baseURL: config.public.apiBase, credentials: 'include', server: false, lazy: true, immediate: false,
   timeout: 240_000, retry: 0
 })
 watch(data, value => {
   if (value && isDinas.value) { selectedProvince.value = value.provinces[0]?.key ?? ''; return }
   if (value && selectedProvince.value && !value.provinces.some(province => province.key === selectedProvince.value)) selectedProvince.value = ''
 }, { immediate: true })
-const loading = computed(() => status.value === 'idle' || status.value === 'pending')
+const loading = computed(() => status.value === 'pending')
 const current = computed(() => selectedProvince.value
   ? data.value?.provinces.find(province => province.key === selectedProvince.value)
   : data.value?.summary)
@@ -76,7 +76,7 @@ async function chooseProvince(key: string) {
         class="rounded-lg border border-stone-200 px-4 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-50 disabled:cursor-wait disabled:opacity-50"
         :disabled="loading" @click="refresh()">
         <AppIcon name="refresh" class="mr-2 h-4 w-4" :class="{ 'animate-spin': loading }" />{{ loading ? 'Memuat...' :
-          'Muat ulang' }}
+          data ? 'Muat ulang' : 'Muat data' }}
       </button>
     </div>
 
@@ -92,6 +92,7 @@ async function chooseProvince(key: string) {
       <button class="mt-3 rounded-lg border border-red-200 px-3 py-1.5 font-medium hover:bg-red-100"
         @click="refresh()">Coba lagi</button>
     </div>
+    <p v-else-if="!data" class="mt-5 text-sm text-muted">Klik Muat data untuk mengambil statistik dari Hisense.</p>
     <template v-else-if="data && current">
       <div class="mt-6 flex flex-wrap items-end justify-between gap-4 rounded-xl bg-stone-50 p-4">
         <label for="hisense-progress-province" class="w-full text-xs font-semibold text-muted sm:w-80">Provinsi yang

@@ -16,7 +16,7 @@ const kecamatan = ref('')
 const page = ref(1)
 const statuses = ['BARANG SIAP', 'PROSES PENGIRIMAN', 'MENUJU ALAMAT', 'BARANG TIBA', 'PROSES INSTALASI', 'INSTALASI SELESAI', 'REVISI', 'DISETUJUI', 'REVIU APIP', 'SESUAI APIP', 'INSTALASI TERKENDALA', 'INSTALASI GAGAL', 'PENGIRIMAN GAGAL']
 const accountScope = `${authUser.value?.id}:${authUser.value?.role}:${authUser.value?.province}`
-const { data, pending, error, refresh } = await useFetch<ResponseData>('/api/hisense/transactions', { key: `hisense-list:${accountScope}`, baseURL: config.public.apiBase, credentials: 'include', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined, query: { search, status, provinsi, kab_kota: kabKota, kecamatan, page }, watch: false, immediate: !isDetailRoute.value, timeout: 240_000, retry: 0 })
+const { data, pending, error, refresh } = await useFetch<ResponseData>('/api/hisense/transactions', { key: `hisense-list:${accountScope}`, baseURL: config.public.apiBase, credentials: 'include', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined, query: { search, status, provinsi, kab_kota: kabKota, kecamatan, page }, watch: false, immediate: false, timeout: 240_000, retry: 0 })
 const { data: provinceData } = await useFetch<{ data: string[] }>('/api/schools/provinces', { key: `school-provinces:${accountScope}`, baseURL: config.public.apiBase, credentials: 'include', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined, immediate: !isDetailRoute.value })
 const { data: locationData } = await useFetch<{ kabKotas: string[]; kecamatans: string[] }>('/api/schools/locations', { key: `school-locations:${accountScope}`, baseURL: config.public.apiBase, credentials: 'include', headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined, query: { provinsi, kab_kota: kabKota }, immediate: !isDetailRoute.value })
 const provinceOptions = computed(() => provinceData.value?.data ?? [])
@@ -119,6 +119,7 @@ const statusClass = (value?: string | null) => value === 'DISETUJUI' || value ==
             class="m-6 rounded-theme bg-red-50 p-5 text-sm text-red-700">
             {{ data?.message || 'Data Hisense belum dapat diambil. Periksa konfigurasi kredensial Hisense di server API.' }}
           </div>
+          <div v-else-if="!data" class="p-12 text-center text-sm text-muted">Klik Cari data untuk mengambil data dari Hisense.</div>
           <div v-else-if="!rows.length" class="p-12 text-center text-sm text-muted">Belum ada data yang cocok dengan
             filter.</div>
           <div v-else class="overflow-x-auto">

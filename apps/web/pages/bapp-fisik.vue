@@ -123,7 +123,7 @@ async function recheckScan(scan: Scan) {
   try {
     await $fetch(`/api/bapp-fisik/storages/${selectedStorage.value.id}/scans/${scan.id}/recheck`, { baseURL: config.public.apiBase, credentials: 'include', method: 'POST' })
     await loadScans()
-  } catch { errorMessage.value = 'Pengecekan ulang belum dapat dijadwalkan. Silakan coba lagi.' }
+  } catch { errorMessage.value = 'Pengecekan belum berhasil. Silakan coba lagi.' }
   finally { rechecking.value = rechecking.value.filter(id => id !== scan.id) }
 }
 
@@ -450,11 +450,10 @@ function receiveBarcode() {
                       <span class="inline-flex rounded-full px-3 py-1 text-base font-bold tabular-nums" :class="scan.schoolProgress.scanned === scan.schoolProgress.total ? 'bg-teal-50 text-teal-800' : 'bg-amber-50 text-amber-800'" :title="`Serial number unik sekolah ini yang sudah terscan di seluruh penyimpanan Hisense / total serial number di Hisense. Diperbarui: ${scan.schoolProgress.checkedAt ? formatScanDate(scan.schoolProgress.checkedAt) : '—'}`">{{ scan.schoolProgress.scanned }}/{{ scan.schoolProgress.total }}</span>
                       <p class="mt-1 text-xs text-muted">{{ scan.schoolProgress.scanned === scan.schoolProgress.total ? 'Lengkap' : 'Belum lengkap' }}</p>
                     </template>
-                    <template v-else-if="scan.schoolProgress?.status === 'error'"><p class="text-xs text-amber-800">Jumlah belum tersedia</p><button type="button" :disabled="recheckingSchools.includes(scan.id)" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 underline disabled:opacity-50" @click="recheckSchool(scan)"><AppIcon name="refresh" class="h-4 w-4" />Cek jumlah BAPP</button></template>
-                    <span v-else-if="scan.schoolProgress" class="text-xs text-sky-700">Menghitung BAPP…</span>
+                    <template v-else-if="scan.schoolProgress"><p class="text-xs text-amber-800">Jumlah belum tersedia</p><button type="button" :disabled="recheckingSchools.includes(scan.id)" class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-sky-700 underline disabled:opacity-50" @click="recheckSchool(scan)"><AppIcon name="refresh" class="h-4 w-4" />Cek jumlah BAPP</button></template>
                     <span v-else class="text-muted">—</span>
                   </td>
-                  <td class="min-w-[190px] px-4 py-4"><span class="inline-block rounded-full px-3 py-1 text-xs font-semibold" :class="statusClasses[scan.validationStatus]">{{ statusLabels[scan.validationStatus] }}</span><p v-if="scan.validationMessage" class="mt-2 max-w-xs text-xs text-muted">{{ scan.validationMessage }}</p><button v-if="scan.validationStatus === 'error' || scan.validationStatus === 'invalid'" type="button" :disabled="rechecking.includes(scan.id)" class="mt-2 text-xs font-semibold text-sky-700 underline disabled:opacity-50" @click="recheckScan(scan)"><AppIcon name="refresh" class="mr-1 h-4 w-4" />{{ rechecking.includes(scan.id) ? 'Menjadwalkan…' : 'Cek ulang' }}</button></td>
+                  <td class="min-w-[190px] px-4 py-4"><span class="inline-block rounded-full px-3 py-1 text-xs font-semibold" :class="statusClasses[scan.validationStatus]">{{ statusLabels[scan.validationStatus] }}</span><p v-if="scan.validationMessage" class="mt-2 max-w-xs text-xs text-muted">{{ scan.validationMessage }}</p><button v-if="scan.validationStatus === 'pending' || scan.validationStatus === 'checking' || scan.validationStatus === 'error' || scan.validationStatus === 'invalid'" type="button" :disabled="rechecking.includes(scan.id)" class="mt-2 text-xs font-semibold text-sky-700 underline disabled:opacity-50" @click="recheckScan(scan)"><AppIcon name="refresh" class="mr-1 h-4 w-4" />{{ rechecking.includes(scan.id) ? 'Mengecek…' : 'Cek Hisense' }}</button></td>
                   <td class="px-4 py-4"><span v-if="scan.isDuplicate" class="whitespace-nowrap rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900" :title="`${scan.occurrences} scan nomor yang sama di seluruh penyimpanan`">⚠ Duplikat · {{ scan.occurrences }} scan</span><span v-else class="text-muted">—</span></td>
                   <td class="px-4 py-4">{{ scan.scannedBy || '—' }}</td>
                 </tr>

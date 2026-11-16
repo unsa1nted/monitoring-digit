@@ -282,39 +282,6 @@ export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'auto
   return job
 }
 
-export function startBappHisenseSyncScheduler() {
-  return setInterval(() => { void startHisenseSyncJob().catch(console.error) }, 10 * 60 * 1000)
-}
-
-let revisionCheckRunning = false
-export async function checkBappRevisions() {
-  if (revisionCheckRunning) return
-  revisionCheckRunning = true
-  try {
-    const pending = await db.select({ idTransaksi: masterBapp.idTransaksi, npsn: masterBapp.npsn, serialNumber: masterBapp.serialNumber, namaSekolah: masterBapp.namaSekolah, petugasReviu: masterBapp.petugasReviu })
-      .from(masterBapp).where(or(eq(masterBapp.statusProgress, 'REVISI'), eq(masterBapp.hasilAkhirReviu, 'Tidak Sesuai')))
-    for (let index = 0; index < pending.length; index += 10) await Promise.all(pending.slice(index, index + 10).map(async row => {
-      try {
-        const transaction = await getHisenseTransaction(row.idTransaksi, 'smk', { bypassCache: true })
-        if (transaction?.kode_status_progress !== 'INSTALASI SELESAI' || transaction.npsn_info?.npsn?.trim() !== row.npsn ||
-          (row.serialNumber?.trim() && transaction.serial_number?.trim() !== row.serialNumber.trim())) return
-        await db.transaction(async tx => {
-          const [change] = await tx.update(masterBapp).set(revisionReadyFields)
-            .where(and(eq(masterBapp.idTransaksi, row.idTransaksi), or(eq(masterBapp.statusProgress, 'REVISI'), eq(masterBapp.hasilAkhirReviu, 'Tidak Sesuai'))))
-          if (!change.affectedRows) return
-          const namaSekolah = transaction.npsn_info?.nama_sekolah?.slice(0, 255) ?? row.namaSekolah
-          await tx.insert(bappReviewNotifications).values({ idTransaksi: row.idTransaksi, userPetugas: row.petugasReviu, namaSekolah, npsn: row.npsn })
-            .onDuplicateKeyUpdate({ set: { userPetugas: row.petugasReviu, namaSekolah, npsn: row.npsn, readAt: null, createdAt: new Date() } })
-        })
-      } catch (error) { console.error(`Pemeriksaan revisi BAPP ${row.idTransaksi} gagal:`, error) }
-    }))
-  } finally { revisionCheckRunning = false }
-}
-export function startBappRevisionScheduler() {
-  void checkBappRevisions().catch(console.error)
-  return setInterval(() => { void checkBappRevisions().catch(console.error) }, 60_000)
-}
-
 export const adminBappReview = new Elysia({ prefix: '/api/admin/bapp-review' })
   .onBeforeHandle(async context => {
     const user = await getSessionUser(context)
