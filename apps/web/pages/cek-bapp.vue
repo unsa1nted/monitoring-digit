@@ -171,6 +171,10 @@ const saving = ref(false)
 const reviewError = ref('')
 const reviewMessage = ref('')
 let reviewMessageTimer: ReturnType<typeof setTimeout> | undefined
+const continuePrompt = ref(false)
+const continueModal = ref<HTMLDivElement | null>(null)
+const continuing = ref(false)
+const continueError = ref('')
 let draftTimer: ReturnType<typeof setTimeout> | undefined
 let draftRequest: Promise<unknown> = Promise.resolve()
 let draftDirty = false
@@ -197,6 +201,7 @@ async function openReview(row: ReviewRow) {
   photoNoteError.value = ''
   reviewError.value = reviewMessage.value = ''
   decision.value = null
+  continuePrompt.value = false
   selectedReasons.value = []
   rejectionNote.value = ''
   await nextTick()
@@ -219,6 +224,7 @@ async function closeReview() {
   enlargedSuket.value = null
   if (import.meta.client && document.fullscreenElement === photoViewer.value) void document.exitFullscreen()
   decision.value = null
+  continuePrompt.value = false
   reviewing.value = null
   detail.value = null
   detailLoading.value = false
@@ -297,9 +303,9 @@ async function togglePhotoFullscreen() {
 }
 function onPhotoFullscreenChange() { photoFullscreen.value = document.fullscreenElement === photoViewer.value }
 function onModalKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') { event.preventDefault(); if (enlargedSuket.value) closeSuket(); else if (photoFullscreen.value) void document.exitFullscreen(); else if (decision.value) decision.value = null; else closeReview(); return }
+  if (event.key === 'Escape') { event.preventDefault(); if (enlargedSuket.value) closeSuket(); else if (continuePrompt.value) { if (!continuing.value) void closeReview() } else if (photoFullscreen.value) void document.exitFullscreen(); else if (decision.value) decision.value = null; else closeReview(); return }
   if (event.key !== 'Tab') return
-  const focusable = (enlargedSuket.value ? suketPreview.value : decision.value ? confirmationModal.value : photoFullscreen.value ? photoViewer.value : reviewModal.value)?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, a[href]')
+  const focusable = (enlargedSuket.value ? suketPreview.value : continuePrompt.value ? continueModal.value : decision.value ? confirmationModal.value : photoFullscreen.value ? photoViewer.value : reviewModal.value)?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, a[href]')
   if (!focusable?.length) return
   const first = focusable[0]
   const last = focusable[focusable.length - 1]
@@ -342,13 +348,36 @@ async function saveReview() {
     await draftRequest.catch(() => {})
     await $fetch(`/api/bapp-review/${encodeURIComponent(id)}`, { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { ...reviewForm, catatanPetugas, action, rejectionReasons: selectedReasons.value, rejectionNote: rejectionText } })
     draftDirty = false
-    await closeReview()
     reviewMessage.value = `Transaksi ${id} ${action === 'approve' ? 'berhasil disetujui' : 'ditolak'} di Hisense.`
     if (reviewMessageTimer) clearTimeout(reviewMessageTimer)
     reviewMessageTimer = setTimeout(() => { reviewMessage.value = '' }, 7000)
+    decision.value = null
+    continueError.value = ''
+    continuePrompt.value = true
+    await nextTick()
+    continueModal.value?.querySelector<HTMLButtonElement>('button')?.focus()
     void Promise.all([refresh(), refreshSummary()]).catch(console.error)
   } catch (error: any) { reviewError.value = error?.data?.message ?? 'Reviu gagal disimpan. Coba lagi.' }
   finally { saving.value = false }
+}
+async function continueToNextReview() {
+  if (continuing.value) return
+  continuing.value = true
+  continueError.value = ''
+  try {
+    const result = await $fetch<{ data: ReviewRow[] }>('/api/bapp-review', { baseURL: config.public.apiBase, credentials: 'include', query: { status: 'INSTALASI SELESAI', page: 1 } })
+    await closeReview()
+    const next = result.data[0]
+    if (next) {
+      selectStatus('INSTALASI SELESAI')
+      await openReview(next)
+    } else {
+      reviewMessage.value = 'Tidak ada BAPP lain yang perlu direviu.'
+      if (reviewMessageTimer) clearTimeout(reviewMessageTimer)
+      reviewMessageTimer = setTimeout(() => { reviewMessage.value = '' }, 7000)
+    }
+  } catch (error: any) { continueError.value = error?.data?.message ?? 'Daftar BAPP belum dapat dimuat. Coba lagi.' }
+  finally { continuing.value = false }
 }
 onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if (draftTimer) void flushDraft().catch(() => {}) })
 </script>
@@ -662,6 +691,17 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if
                     ?
                     'Lanjutkan setujui' : 'Lanjutkan tolak' }}
               </button></div>
+          </div>
+        </div>
+        <div v-if="continuePrompt" ref="continueModal" role="alertdialog" aria-modal="true" aria-labelledby="continue-review-title" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+          <div class="w-full max-w-md rounded-theme bg-white p-5 shadow-xl">
+            <h3 id="continue-review-title" class="text-lg font-semibold">Apakah anda ingin melanjutkan proses cek bapp?</h3>
+            <p class="mt-2 text-sm text-teal-700">{{ reviewMessage }}</p>
+            <p v-if="continueError" role="alert" class="mt-3 text-sm text-red-700">{{ continueError }}</p>
+            <div class="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" :disabled="continuing" class="rounded-theme border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-50 disabled:opacity-50" @click="closeReview">Tidak, saya mau rehat dulu</button>
+              <button type="button" :disabled="continuing" class="rounded-theme bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 disabled:opacity-50" @click="continueToNextReview">{{ continuing ? 'Mencari BAPP…' : 'Ya lanjut' }}</button>
+            </div>
           </div>
         </div>
       </div>

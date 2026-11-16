@@ -24,8 +24,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - ...and 44 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
-- ...2 earlier decisions not shown (`pjm search`, or `search_events(query)` via MCP)
-- Impor Excel BAPP otomatis meng-upsert assignment NPSN untuk reviewer terdaftar saat pasangan petugas per NPSN konsisten; INSTALASI SELESAI Resubmit TRUE memakai Reviewer MOE Revisi, baris lain Reviewer MOE, Tag dikosongkan, dan nilai reviu foto lama dipertahankan. [apps/api/src/bapp-review.ts]
+- ...3 earlier decisions not shown (`pjm search`, or `search_events(query)` via MCP)
 - REVIU APIP diimpor seperti SESUAI APIP; DISETUJUI, SESUAI APIP, dan REVIU APIP tidak menampilkan aksi reviu dan API menolak perubahan reviu. [apps/api/src/bapp-review.ts:12]
 - Impor hasil reviu Excel memakai Serial Number untuk mencocokkan master_bapp; ID Transaksi membedakan serial ganda. Delapan sel foto kosong menjadi NULL, dan Hasil Akhir Reviu dari sheet dipakai atau dihitung bila foto lengkap. [apps/api/src/bapp-excel-import.ts:21]
 - Cek BAPP menampilkan transaksi per akun Internal dari master_bapp.petugas_reviu = users.username; tab status, daftar, detail, dan simpan tidak memakai assignment NPSN. [apps/api/src/bapp-review.ts:369]
@@ -40,9 +39,9 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Petugas reviewer login aplikasi dengan password yang sama seperti Hisense; API memperoleh token StaffSMK dan menyimpannya sementara per sesi. Approve/reject memakai token itu. Admin dapat menyamakan password beberapa reviewer setelah validasi Hisense. [apps/api/src/hisense.ts:64]
 - Autosave pilihan dan catatan foto sebagai draft di master_bapp lewat PATCH; perubahan status Hisense tetap hanya pada persetujuan atau penolakan final. [apps/api/src/bapp-review.ts:536]
 - Approve BAPP idempoten untuk status DISETUJUI pada master atau Hisense; draft pada status DISETUJUI diabaikan tanpa error, status lokal disinkronkan bila Hisense sudah menyetujui. [apps/api/src/bapp-review.ts:536]
+- Setelah approve/reject, Ya lanjut membuka BAPP pertama berstatus INSTALASI SELESAI dari daftar terbaru halaman 1; bila kosong, modal ditutup dan pesan ditampilkan. [apps/web/pages/cek-bapp.vue:361]
 
 ## Notes
-- New feature: feat: update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: update [apps/api/src/bapp-review.ts]
 - New feature: feat : Update [apps/api/drizzle/0020_busy_starbolt.sql]
@@ -51,6 +50,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: Update [apps/api/src/bapp-review.ts]
 - New feature: feat: Update core [apps/api/scripts/test-bapp-notifications.ts]
+- New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 
 ## Key files
