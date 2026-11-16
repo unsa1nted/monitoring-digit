@@ -45,7 +45,6 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Pemeriksaan otomatis revisi BAPP hanya lewat sinkron Excel Hisense setiap 10 menit; tidak ada polling GET per transaksi. Detail dan approve/reject tetap memakai API Hisense saat aksi pengguna. [apps/api/src/bapp-review.ts:201]
 
 ## Notes
-- New feature: feat : Update [apps/api/drizzle/0020_busy_starbolt.sql]
 - New feature: feat: update [apps/api/scripts/test-hisense-export.ts]
 - gotcha: Token Hisense petugas hanya ada di memori proses API; setelah restart API, petugas perlu logout/login lagi sebelum approve atau reject. [apps/api/src/hisense.ts:24]
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
@@ -55,6 +54,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update modal bapp [apps/web/pages/cek-bapp.vue]
 - gotcha: Dokumen Hisense menyediakan webhook INSTALLATION_UPDATE ke /update-installation dengan payload transaksi lengkap; API lokal belum punya handler. Queue per-ID saja tidak mengurangi jumlah GET. [hisense_direktorat_webhook.md:31]
+- New feature: feat: Update [apps/api/scripts/test-bapp-scans.ts]
 
 ## Key files
 - `.env.example`
