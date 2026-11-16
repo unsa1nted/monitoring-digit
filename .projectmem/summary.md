@@ -42,7 +42,6 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Approve BAPP idempoten untuk status DISETUJUI pada master atau Hisense; draft pada status DISETUJUI diabaikan tanpa error, status lokal disinkronkan bila Hisense sudah menyetujui. [apps/api/src/bapp-review.ts:536]
 
 ## Notes
-- New feature: feat: update [apps/api/src/bapp-review.ts]
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
@@ -52,6 +51,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - gotcha: Token Hisense petugas hanya ada di memori proses API; setelah restart API, petugas perlu logout/login lagi sebelum approve atau reject. [apps/api/src/hisense.ts:24]
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: Update [apps/api/src/bapp-review.ts]
+- New feature: feat: Update core [apps/api/scripts/test-bapp-notifications.ts]
 
 ## Key files
 - `.env.example`

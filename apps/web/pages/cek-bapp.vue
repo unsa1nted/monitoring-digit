@@ -144,6 +144,10 @@ const detailFields = computed(() => {
     ['Jumlah PID', item.npsn_info?.qty ?? item.jumlah_pid]
   ] as Array<[string, string | number | null | undefined]>
 })
+const suketPhotos = computed(() => [
+  { label: 'Surat Keterangan 1', url: photo(detail.value, 'foto_suket_1') },
+  { label: 'Surat Keterangan 2', url: photo(detail.value, 'foto_suket_2') }
+])
 const reviewForm = reactive({ fotoPlangSekolah: '' as Verdict | '', fotoBoxPic: '' as Verdict | '', fotoKelengkapanUnit: '' as Verdict | '', fotoProsesInstalasi: '' as Verdict | '', fotoKesesuaianSerialNumber: '' as Verdict | '', fotoTrainingRumahPendidikan: '' as Verdict | '', fotoBapp1: '' as Verdict | '', fotoBapp2: '' as Verdict | '' })
 const photoNotes = reactive(Object.fromEntries(photoFields.map(field => [field.reviewKey, ''])) as Record<(typeof photoFields)[number]['reviewKey'], string>)
 const legacyNote = ref('')
@@ -568,6 +572,18 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if
                   <dd class="min-w-0 break-words font-medium">{{ value ?? '—' }}</dd>
                 </div>
               </dl>
+              <details v-if="detailMatchesSerial" class="mt-4 rounded-theme border border-stone-200 bg-stone-50 p-3 text-sm">
+                <summary class="cursor-pointer font-semibold text-sky-800">Surat Keterangan (klik untuk melihat)</summary>
+                <div class="mt-3 grid gap-4">
+                  <div v-for="item in suketPhotos" :key="item.label" class="rounded-theme border border-stone-200 bg-white p-3">
+                    <p class="mb-2 font-medium">{{ item.label }}</p>
+                    <a v-if="item.url" :href="item.url" target="_blank" rel="noopener noreferrer" :aria-label="`Buka ${item.label}`">
+                      <img :src="item.url" :alt="item.label" loading="lazy" class="max-h-80 w-full rounded object-contain" />
+                    </a>
+                    <p v-else class="text-muted">Tidak ada surat keterangan</p>
+                  </div>
+                </div>
+              </details>
               <p v-if="reviewError" role="alert" class="mt-3 text-sm text-red-700">{{ reviewError }}</p>
               <div class="mt-4 grid grid-cols-2 gap-3">
                 <button type="button" :disabled="saving || !detailMatchesSerial"
