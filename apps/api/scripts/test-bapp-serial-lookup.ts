@@ -4,13 +4,27 @@ import assert from 'node:assert/strict'
 process.env.HISENSE_BASE_URL = 'https://hisense.test/api'
 process.env.HISENSE_SMK_USERNAME = 'test'
 process.env.HISENSE_SMK_PASSWORD = 'test'
-const { getHisenseBySerialNumber, getHisenseTransaction } = await import('../src/hisense.js')
+process.env.AUTH_SECRET ??= 'test-only-secret-for-hisense-lookup-0001'
+const { getHisenseBySerialNumber, getHisenseBulkTransactions, getHisenseTransaction } = await import('../src/hisense.js')
+const { bappRowFromHisense } = await import('../src/bapp-review.js')
 const originalFetch = globalThis.fetch
 let pages: Record<string, unknown>[] = []
 const searchedPages: number[] = []
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input))
   if (url.pathname.endsWith('/login')) return Response.json({ data: { token: 'test-token', expires_in: '1' } })
+  if (url.pathname.endsWith('/bulk')) {
+    assert.equal(init?.method, 'POST')
+    const body = JSON.parse(String(init?.body)) as { id_transaksi: string[]; limit: number }
+    assert.ok(body.id_transaksi.length <= 100)
+    assert.equal(body.limit, body.id_transaksi.length)
+    return Response.json({ success: true, data: body.id_transaksi.map(id_transaksi => ({ id_transaksi, kode_direktorat: 'SMK' })) })
+  }
+  if (url.pathname.startsWith('/api/direktorat/smk/')) {
+    const id = decodeURIComponent(url.pathname.split('/').at(-1)!)
+    const match = (pages[0] as { data?: Array<{ id_transaksi?: string }> }).data?.find(item => item.id_transaksi === id)
+    return match ? Response.json({ success: true, data: [{ ...match, kode_direktorat: 'SMK' }] }) : new Response(null, { status: 404 })
+  }
   assert.equal(url.searchParams.get('search'), '000-SN-ABC')
   const page = Number(url.searchParams.get('page'))
   searchedPages.push(page)
@@ -25,6 +39,10 @@ try {
   pages = [response([{ ...record, id_transaksi: '000-SN-ABC', serial_number: '000-SN-ABC-EXTRA' }])]
   assert.equal(await getHisenseBySerialNumber('000-SN-ABC', 'smk', { bypassCache: true }), null, 'ID and partial serial matches must not validate')
   assert.ok(await getHisenseTransaction('000-SN-ABC', 'smk', { bypassCache: true }), 'Transaction detail lookup still uses transaction IDs')
+  assert.equal(await getHisenseTransaction('MISSING', 'smk'), null)
+  assert.equal((await getHisenseBulkTransactions(['TX-1', 'TX-2'])).length, 2)
+  await assert.rejects(getHisenseBulkTransactions(Array.from({ length: 101 }, (_, index) => `TX-${index}`)), /100 ID/)
+  assert.equal(bappRowFromHisense({ id_transaksi: 'TX-1', kode_status_progress: 'INSTALASI SELESAI', npsn_info: { npsn: '00123456' }, riwayat_revisi_moe: [{}] }).sudahAdaRevisi, 'Ya')
   pages = [response([record], 1, true), response([{ ...record, id_transaksi: 'OTHER-UNIT', npsn_info: { npsn: 'OTHER-SCHOOL' } }], 2)]
   await assert.rejects(getHisenseBySerialNumber('000-SN-ABC', 'smk', { bypassCache: true }), /lebih dari satu/)
   pages = [response([{ ...record, serial_number: ' 000-SN-ABC ' }])]

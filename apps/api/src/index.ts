@@ -15,7 +15,7 @@ import { canonicalProvince, schoolScope } from './province-scope.js'
 import { adminUsers } from './admin-users.js'
 import { bappStorageRoutes } from './bapp-storage.js'
 import { bappReportRoutes } from './bapp-report.js'
-import { adminBappReview, bappReview } from './bapp-review.js'
+import { adminBappReview, bappReview, startBappHisenseSyncScheduler } from './bapp-review.js'
 
 const normalizeProvince = (value: string | null | undefined) => value ? provinceKey(value) : ''
 
@@ -234,7 +234,9 @@ const app = new Elysia({ adapter: node() })
   .listen(Number(process.env.API_PORT ?? 4001))
 
 console.log(`API running at http://localhost:${process.env.API_PORT ?? 4001}`)
+const bappHisenseSyncTimer = startBappHisenseSyncScheduler()
 process.on('SIGINT', async () => {
+  clearInterval(bappHisenseSyncTimer)
   await pool.end()
   process.exit(0)
 })

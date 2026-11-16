@@ -152,19 +152,52 @@ export async function getHisenseTransactions(query: Record<string, string | unde
   return { data, sources: responses.map(({ code }) => code.toUpperCase()), meta: responses[0]?.response.meta }
 }
 
-export async function getHisenseTransaction(id: string, selectedDirectorate?: string, options: { bypassCache?: boolean } = {}) {
-  const started = Date.now()
-  for (let page = 1; page <= 100; page++) {
-    if (Date.now() - started > 90_000) throw new Error('Pencarian Hisense terlalu lama. Silakan cek ulang.')
-    const result = await getHisenseTransactions({ search: id, limit: '100', page: String(page) }, selectedDirectorate, options)
-    const match = result.data.find(item => item.id_transaksi === id)
-    if (match) return match
-    if (result.meta?.has_next_page === false) return null
-    if (result.meta?.has_next_page !== true || result.meta.current_page !== page || !result.data.length) {
-      throw new Error('Hasil pencarian Hisense belum lengkap. Silakan cek ulang.')
-    }
+export async function getHisenseBulkTransactions(ids: string[], selectedDirectorate = 'smk') {
+  if (!ids.length || ids.length > 100 || new Set(ids).size !== ids.length) throw new Error('Bulk Hisense memerlukan 1 sampai 100 ID transaksi unik.')
+  const code = selectedDirectorate.toLowerCase()
+  let token = await tokenFor(code)
+  const request = () => fetch(`${baseUrl}/direktorat/${code}/bulk`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_transaksi: ids, page: 1, limit: ids.length }), signal: AbortSignal.timeout(60_000)
+  })
+  let response = await request()
+  if (response.status === 401) {
+    await response.body?.cancel()
+    tokenCache.delete(code)
+    token = await tokenFor(code)
+    response = await request()
   }
-  throw new Error('Batas pencarian Hisense tercapai. Silakan cek ulang.')
+  if (!response.ok) throw new Error(`Hisense bulk ${code.toUpperCase()} gagal (${response.status}).`)
+  const result = await response.json() as HisenseListResponse
+  if (result.success !== true || !Array.isArray(result.data) || result.meta?.has_next_page === true) throw new Error('Respons bulk Hisense tidak lengkap.')
+  const requested = new Set(ids)
+  const returned = new Set<string>()
+  for (const row of result.data) {
+    if (!row.id_transaksi || !requested.has(row.id_transaksi) || returned.has(row.id_transaksi) || row.kode_direktorat?.toLowerCase() !== code) throw new Error('Respons bulk Hisense berisi transaksi tidak valid.')
+    returned.add(row.id_transaksi)
+  }
+  if (returned.size !== requested.size) throw new Error('Respons bulk Hisense kehilangan transaksi yang diminta.')
+  return result.data
+}
+
+export async function getHisenseTransaction(id: string, selectedDirectorate = 'smk', options: { bypassCache?: boolean } = {}) {
+  void options
+  const code = selectedDirectorate.toLowerCase()
+  let token = await tokenFor(code)
+  const request = () => fetch(`${baseUrl}/direktorat/${code}/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000) })
+  let response = await request()
+  if (response.status === 401) {
+    await response.body?.cancel()
+    tokenCache.delete(code)
+    token = await tokenFor(code)
+    response = await request()
+  }
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error(`Hisense detail ${code.toUpperCase()} gagal (${response.status}).`)
+  const result = await response.json() as { success: boolean; data?: HisenseTransaction | HisenseTransaction[] }
+  const data = Array.isArray(result.data) ? result.data : result.data ? [result.data] : []
+  if (result.success !== true || data.length !== 1 || data[0]?.id_transaksi !== id || data[0].kode_direktorat?.toLowerCase() !== code) throw new Error('Respons detail Hisense tidak valid.')
+  return data[0]
 }
 
 export function configuredDirectorates() { return directorates.map((code) => code.toUpperCase()) }

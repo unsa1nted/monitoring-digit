@@ -65,7 +65,7 @@ async function pollHisenseSync() {
 }
 let lastReportedSyncId = ''
 let syncPollingActive = true
-async function syncHisenseExcel() {
+async function syncHisenseApi() {
   if (syncJob.value?.status === 'running') return
   problem.value = message.value = ''
   try {
@@ -149,9 +149,9 @@ async function syncHisenseReviewers() {
       <p v-if="problem" role="alert" class="text-sm text-red-700">{{ problem }}</p>
       <p v-if="message" role="status" class="text-sm text-teal-700">{{ message }}</p>
       <section class="space-y-3 rounded-theme border border-stone-200 bg-white p-5 shadow-card">
-        <h2 class="text-lg font-semibold">Sinkron Excel Hisense</h2>
-        <p class="text-sm text-muted">Sistem mengunduh dan menyinkronkan Excel Hisense otomatis setiap 10 menit. Tombol ini menjalankan sinkronisasi langsung. Hanya transaksi baru dengan Resubmit FALSE dan INSTALASI SELESAI yang dibagikan ke petugas.</p>
-        <button type="button" :disabled="syncJob?.status === 'running'" class="rounded-theme bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" @click="syncHisenseExcel">{{ syncJob?.status === 'running' ? 'Sinkronisasi berjalan…' : 'Unduh dan Sinkron dari Hisense' }}</button>
+        <h2 class="text-lg font-semibold">Sinkron API Hisense</h2>
+        <p class="text-sm text-muted">Sistem memeriksa daftar transaksi setiap 10 menit dan mengambil detail baru atau berubah secara bulk. Tombol ini menjalankan sinkronisasi langsung. Transaksi baru berstatus INSTALASI SELESAI tanpa riwayat revisi dibagikan ke petugas.</p>
+        <button type="button" :disabled="syncJob?.status === 'running'" class="rounded-theme bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" @click="syncHisenseApi">{{ syncJob?.status === 'running' ? 'Sinkronisasi berjalan…' : 'Sinkron dari Hisense' }}</button>
         <div v-if="syncJob?.status === 'running'" role="status" class="space-y-1 text-sm text-muted">
           <p>{{ syncJob.stage }} — {{ syncJob.percent }}%</p>
           <progress :value="syncJob.percent" max="100" class="h-3 w-full accent-sky-600">{{ syncJob.percent }}%</progress>

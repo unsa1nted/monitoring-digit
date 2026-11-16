@@ -4,7 +4,7 @@ import { db, pool } from './db/index.js'
 import { bappHisenseSyncRuns, bappReviewNotifications, bappReviewerAssignments, masterBapp, petugasReviewer } from './db/schema.js'
 import { getSessionUser } from './auth.js'
 import { recordActivity } from './activity.js'
-import { downloadHisenseSmkAllocationExcel, getHisenseSmkPages, getHisenseTransaction, reviewHisenseAllocation, type HisenseTransaction } from './hisense.js'
+import { getHisenseBulkTransactions, getHisenseSmkPages, getHisenseTransaction, reviewHisenseAllocation, type HisenseTransaction } from './hisense.js'
 import { parseBappExcel, parseBappReviewExcel } from './bapp-excel-import.js'
 import { bappRejectionReasons } from '../../../shared/bapp-rejection-reasons.js'
 
@@ -201,6 +201,10 @@ type BappImportProgress = (percent: number, stage: string) => void
 export async function importBappExcel(buffer: Buffer, progress: BappImportProgress = () => {}, source?: 'automatic' | 'manual') {
   progress(45, 'Membaca Excel Hisense')
   const parsed = await parseBappExcel(buffer)
+  return importBappRows(parsed, progress, source)
+}
+
+async function importBappRows(parsed: Awaited<ReturnType<typeof parseBappExcel>>, progress: BappImportProgress, source?: 'automatic' | 'manual') {
   progress(50, 'Memeriksa transaksi baru')
   const existing = new Map((await db.select({ idTransaksi: masterBapp.idTransaksi, statusProgress: masterBapp.statusProgress, hasilAkhirReviu: masterBapp.hasilAkhirReviu, petugasReviu: masterBapp.petugasReviu }).from(masterBapp)).map(row => [row.idTransaksi, row]))
   const newReviewRows = parsed.rows.filter(row => !existing.has(row.idTransaksi) && row.sudahAdaRevisi === 'Tidak' && row.statusProgress === 'INSTALASI SELESAI')
@@ -248,6 +252,57 @@ export async function importBappExcel(buffer: Buffer, progress: BappImportProgre
   return { success: true, created, updated: parsed.rows.length - created, allocated: allocations.size, skippedStatus: parsed.skippedStatus, skippedDuplicate: parsed.skippedDuplicate }
 }
 
+const syncableBappStatuses = new Set(['INSTALASI SELESAI', 'REVISI', 'DISETUJUI', 'SESUAI APIP', 'REVIU APIP'])
+export function bappRowFromHisense(transaction: HisenseTransaction): Awaited<ReturnType<typeof parseBappExcel>>['rows'][number] {
+  const idTransaksi = transaction.id_transaksi?.trim() ?? ''
+  const npsn = transaction.npsn_info?.npsn?.trim() ?? ''
+  const statusProgress = transaction.kode_status_progress?.trim().toUpperCase() ?? ''
+  if (!idTransaksi || idTransaksi.length > 80 || !/^\d{8}$/.test(npsn) || !syncableBappStatuses.has(statusProgress)) throw new Error(`Data transaksi Hisense ${idTransaksi || '(kosong)'} tidak valid.`)
+  const bounded = (value: string | null | undefined, max: number) => {
+    const text = value?.trim() || null
+    if (text && text.length > max) throw new Error(`Data transaksi Hisense ${idTransaksi} melebihi batas panjang.`)
+    return text
+  }
+  const reviewer = typeof transaction.approved_by_moe === 'string' && transaction.approved_by_moe.trim()
+    ? transaction.approved_by_moe : typeof transaction.rejected_by_moe === 'string' ? transaction.rejected_by_moe : ''
+  return {
+    idTransaksi, npsn, statusProgress,
+    sudahAdaRevisi: (Array.isArray(transaction.riwayat_revisi_moe) && transaction.riwayat_revisi_moe.length > 0) || Boolean(transaction.waktu_revisi) ? 'Ya' : 'Tidak',
+    namaSekolah: bounded(transaction.npsn_info?.nama_sekolah, 255),
+    propinsi: bounded(transaction.npsn_info?.propinsi, 120),
+    kabupatenKota: bounded(transaction.npsn_info?.kabupaten_kota, 120),
+    kecamatan: bounded(transaction.npsn_info?.kecamatan, 120),
+    serialNumber: bounded(transaction.serial_number, 160),
+    petugasReviu: bounded(reviewer, 80) ?? ''
+  }
+}
+
+async function syncBappFromHisenseApi(progress: BappImportProgress, source: 'automatic' | 'manual') {
+  progress(5, 'Mengambil daftar transaksi Hisense')
+  const existing = new Map((await db.select({ idTransaksi: masterBapp.idTransaksi, statusProgress: masterBapp.statusProgress, hasilAkhirReviu: masterBapp.hasilAkhirReviu, npsn: masterBapp.npsn, serialNumber: masterBapp.serialNumber }).from(masterBapp)).map(row => [row.idTransaksi, row]))
+  const seen = new Set<string>()
+  const changedIds: string[] = []
+  for await (const page of getHisenseSmkPages({ status: [...syncableBappStatuses].join(',') })) {
+    for (const row of page) {
+      const id = row.id_transaksi?.trim()
+      const status = row.kode_status_progress?.trim().toUpperCase() ?? ''
+      if (!id || seen.has(id) || row.kode_direktorat?.toUpperCase() !== 'SMK') throw new Error('Daftar transaksi Hisense berisi data tidak valid atau duplikat.')
+      seen.add(id)
+      if (!syncableBappStatuses.has(status)) continue
+      const current = existing.get(id)
+      if (!current || current.statusProgress !== status || current.npsn !== row.npsn_info?.npsn?.trim() || current.serialNumber !== (row.serial_number?.trim() || null) || current.hasilAkhirReviu === 'Tidak Sesuai' && status === 'INSTALASI SELESAI') changedIds.push(id)
+    }
+    progress(20, `Memeriksa ${seen.size} transaksi Hisense`)
+  }
+  const rows: Awaited<ReturnType<typeof parseBappExcel>>['rows'] = []
+  for (let index = 0; index < changedIds.length; index += 100) {
+    const details = await getHisenseBulkTransactions(changedIds.slice(index, index + 100))
+    for (const detail of details) if (syncableBappStatuses.has(detail.kode_status_progress?.trim().toUpperCase() ?? '')) rows.push(bappRowFromHisense(detail))
+    progress(20 + Math.round((index + details.length) / changedIds.length * 25), `Mengambil detail ${index + details.length} dari ${changedIds.length} transaksi`)
+  }
+  return importBappRows({ rows, skippedStatus: changedIds.length - rows.length, skippedDuplicate: 0 }, progress, source)
+}
+
 type HisenseSyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: Awaited<ReturnType<typeof importBappExcel>>; message?: string }
 let hisenseSyncJob: HisenseSyncJob | null = null
 
@@ -262,11 +317,7 @@ export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'auto
   hisenseSyncJob = job
   void (async () => {
     try {
-      const buffer = await downloadHisenseSmkAllocationExcel((received, total) => {
-        job.percent = total ? Math.min(40, Math.round(received / total * 40)) : 5
-        job.stage = `Mengunduh Excel Hisense${total ? ` (${Math.round(received / total * 100)}%)` : ''}`
-      })
-      job.result = await importBappExcel(buffer, (percent, stage) => { job.percent = percent; job.stage = stage }, source)
+      job.result = await syncBappFromHisenseApi((percent, stage) => { job.percent = percent; job.stage = stage }, source)
       job.status = 'done'
       if (onSuccess) await onSuccess(job.result).catch(console.error)
     } catch (error) {
@@ -280,6 +331,10 @@ export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'auto
     }
   })()
   return job
+}
+
+export function startBappHisenseSyncScheduler() {
+  return setInterval(() => { void startHisenseSyncJob().catch(console.error) }, 10 * 60 * 1000)
 }
 
 export const adminBappReview = new Elysia({ prefix: '/api/admin/bapp-review' })
