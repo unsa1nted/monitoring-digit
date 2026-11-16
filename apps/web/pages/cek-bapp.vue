@@ -148,6 +148,21 @@ const suketPhotos = computed(() => [
   { label: 'Surat Keterangan 1', url: photo(detail.value, 'foto_suket_1') },
   { label: 'Surat Keterangan 2', url: photo(detail.value, 'foto_suket_2') }
 ])
+const enlargedSuket = ref<{ label: string; url: string } | null>(null)
+const suketPreview = ref<HTMLDivElement | null>(null)
+const suketCloseButton = ref<HTMLButtonElement | null>(null)
+let suketTrigger: HTMLButtonElement | null = null
+function openSuket(item: { label: string; url: string }, event: MouseEvent) {
+  suketTrigger = event.currentTarget as HTMLButtonElement
+  enlargedSuket.value = item
+  nextTick(() => suketCloseButton.value?.focus())
+}
+function closeSuket() {
+  enlargedSuket.value = null
+  const trigger = suketTrigger
+  suketTrigger = null
+  nextTick(() => trigger?.focus())
+}
 const reviewForm = reactive({ fotoPlangSekolah: '' as Verdict | '', fotoBoxPic: '' as Verdict | '', fotoKelengkapanUnit: '' as Verdict | '', fotoProsesInstalasi: '' as Verdict | '', fotoKesesuaianSerialNumber: '' as Verdict | '', fotoTrainingRumahPendidikan: '' as Verdict | '', fotoBapp1: '' as Verdict | '', fotoBapp2: '' as Verdict | '' })
 const photoNotes = reactive(Object.fromEntries(photoFields.map(field => [field.reviewKey, ''])) as Record<(typeof photoFields)[number]['reviewKey'], string>)
 const legacyNote = ref('')
@@ -168,6 +183,7 @@ async function openReview(row: ReviewRow) {
   if (draftTimer) clearTimeout(draftTimer)
   draftDirty = false
   reviewing.value = row
+  enlargedSuket.value = null
   selectedSerial.value = row.transaction?.serial_number?.trim() ?? ''
   detail.value = null
   const id = row.transaction?.id_transaksi
@@ -200,6 +216,7 @@ async function openReview(row: ReviewRow) {
 }
 async function closeReview() {
   try { await flushDraft() } catch { return }
+  enlargedSuket.value = null
   if (import.meta.client && document.fullscreenElement === photoViewer.value) void document.exitFullscreen()
   decision.value = null
   reviewing.value = null
@@ -280,9 +297,9 @@ async function togglePhotoFullscreen() {
 }
 function onPhotoFullscreenChange() { photoFullscreen.value = document.fullscreenElement === photoViewer.value }
 function onModalKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape') { event.preventDefault(); if (photoFullscreen.value) void document.exitFullscreen(); else if (decision.value) decision.value = null; else closeReview(); return }
+  if (event.key === 'Escape') { event.preventDefault(); if (enlargedSuket.value) closeSuket(); else if (photoFullscreen.value) void document.exitFullscreen(); else if (decision.value) decision.value = null; else closeReview(); return }
   if (event.key !== 'Tab') return
-  const focusable = (decision.value ? confirmationModal.value : photoFullscreen.value ? photoViewer.value : reviewModal.value)?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, a[href]')
+  const focusable = (enlargedSuket.value ? suketPreview.value : decision.value ? confirmationModal.value : photoFullscreen.value ? photoViewer.value : reviewModal.value)?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea, a[href]')
   if (!focusable?.length) return
   const first = focusable[0]
   const last = focusable[focusable.length - 1]
@@ -577,9 +594,9 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if
                 <div class="mt-3 grid gap-4">
                   <div v-for="item in suketPhotos" :key="item.label" class="rounded-theme border border-stone-200 bg-white p-3">
                     <p class="mb-2 font-medium">{{ item.label }}</p>
-                    <a v-if="item.url" :href="item.url" target="_blank" rel="noopener noreferrer" :aria-label="`Buka ${item.label}`">
+                    <button v-if="item.url" type="button" class="block w-full cursor-zoom-in" :aria-label="`Perbesar ${item.label}`" @click="openSuket({ label: item.label, url: item.url }, $event)">
                       <img :src="item.url" :alt="item.label" loading="lazy" class="max-h-80 w-full rounded object-contain" />
-                    </a>
+                    </button>
                     <p v-else class="text-muted">Tidak ada surat keterangan</p>
                   </div>
                 </div>
@@ -600,6 +617,13 @@ onUnmounted(() => { if (reviewMessageTimer) clearTimeout(reviewMessageTimer); if
             </aside>
           </div>
         </form>
+        <div v-if="enlargedSuket" ref="suketPreview" role="dialog" aria-modal="true" aria-labelledby="suket-preview-title" class="fixed inset-0 z-[60] flex h-dvh flex-col bg-stone-950 p-4 text-white">
+          <div class="flex items-center justify-between gap-4">
+            <h3 id="suket-preview-title" class="text-lg font-semibold">{{ enlargedSuket.label }}</h3>
+            <button ref="suketCloseButton" type="button" class="inline-flex items-center gap-2 rounded-theme bg-white/15 px-3 py-2 text-sm hover:bg-white/25" @click="closeSuket"><AppIcon name="close" class="h-4 w-4" />Tutup</button>
+          </div>
+          <img :src="enlargedSuket.url" :alt="enlargedSuket.label" class="min-h-0 w-full flex-1 object-contain" />
+        </div>
         <div v-if="decision" ref="confirmationModal" role="alertdialog" aria-modal="true"
           aria-labelledby="decision-title"
           class="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/60 p-4">

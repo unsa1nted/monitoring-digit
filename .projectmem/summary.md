@@ -1,6 +1,6 @@
 # projectmem - monitoring-digit
 
-_Last updated: 2026-11-15_
+_Last updated: 2026-11-16_
 
 ## Project purpose
 Nuxt dashboard + Elysia API + MySQL database.
@@ -11,6 +11,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [OPEN] #0052 Reviewer MOE tetap direktoratsmk setelah reviu memakai token sistem meski payload reviewer_name adalah username petugas login. [apps/api/src/hisense.ts:61] (open)
   - Partial attempt: Bandingkan log persetujuan aplikasi terbaru dengan GET Hisense: 1 persetujuan ditemukan, approved_by_moe tidak cocok username login dan bernilai akun integrasi direktoratsmk. Payload reviewer_name tidak menentukan field itu. [apps/api/src/hisense.ts:61]
   - Partial attempt: Batalkan login Hisense per petugas; kembali ke token sistem dan reviewer_name=username login. Mock review, build API/web lulus; Hisense remote sebelumnya tetap menyimpan direktoratsmk. [apps/api/src/hisense.ts:61]
+- [DONE] #0056 Klik foto surat keterangan membuka tab baru; perlu pratinjau membesar di modal yang sama [apps/web/pages/cek-bapp.vue:578] (fixed)
 - [DONE] #0055 Approve BAPP menampilkan error status DISETUJUI saat transaksi sebenarnya sudah disetujui; perlu respons sukses idempoten. [apps/api/src/bapp-review.ts:552] (fixed)
 - [DONE] #0054 Permintaan catatan perbaikan untuk status Revisi Tersedia dan autosave pilihan reviu foto; periksa alur penyimpanan saat ini. [apps/web/pages/cek-bapp.vue] (fixed)
 - [DONE] #0051 Penolakan Hisense perlu memakai PUT /hi-transaksi/alokasi/review/:id dengan tag_revisi string; contoh memakai token StaffSMK, sementara aplikasi memakai token Direktorat SMK. [apps/api/src/hisense.ts:61] (fixed)
@@ -20,8 +21,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [DONE] #0047 Kotak catatan tetap tidak tampil di modal Reviu BAPP walau status Sedang Ditolak terlihat; periksa perbedaan data list dan detail Hisense. [apps/web/pages/cek-bapp.vue:516] (fixed)
 - [DONE] #0046 Bagian atas modal reviu BAPP masih terpotong dan modal tidak memenuhi layar setelah perbaikan overflow. [apps/web/pages/cek-bapp.vue:375] (fixed)
 - [DONE] #0045 Catatan penolakan tidak tampil di modal Cek BAPP meski Hisense menyediakan catatan_revisi. [apps/web/pages/cek-bapp.vue:122] (fixed)
-- [DONE] #0044 Modal reviu BAPP tampak terpotong; perlu notifikasi sukses, catatan penolakan/revisi sebelumnya, dan perpindahan foto otomatis setelah penilaian. [apps/web/pages/cek-bapp.vue] (fixed)
-- ...and 43 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
+- ...and 44 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
 - ...2 earlier decisions not shown (`pjm search`, or `search_events(query)` via MCP)
@@ -42,7 +42,6 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Approve BAPP idempoten untuk status DISETUJUI pada master atau Hisense; draft pada status DISETUJUI diabaikan tanpa error, status lokal disinkronkan bila Hisense sudah menyetujui. [apps/api/src/bapp-review.ts:536]
 
 ## Notes
-- New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: update [apps/api/src/bapp-review.ts]
@@ -52,6 +51,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: Update [apps/api/src/bapp-review.ts]
 - New feature: feat: Update core [apps/api/scripts/test-bapp-notifications.ts]
+- New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 
 ## Key files
 - `.env.example`
