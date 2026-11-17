@@ -523,15 +523,20 @@ export async function loadBappDashboard(mineUsername?: string) {
     ? await db.select(bappSummaryFields).from(masterBapp)
       .where(eq(masterBapp.petugasReviu, mineUsername))
     : await db.select(bappSummaryFields).from(masterBapp)
+  const reviewOutcome = sql`case
+    when ${masterBapp.statusProgress} = 'REVISI' then 'revision'
+    when ${masterBapp.statusProgress} in ('DISETUJUI', 'SESUAI APIP', 'REVIU APIP') or ${masterBapp.hasilAkhirReviu} = 'Sesuai' then 'accepted'
+    when ${masterBapp.hasilAkhirReviu} = 'Tidak Sesuai' then 'rejected'
+    else 'pending' end`
   const reviewers = mineUsername ? [] : await db.select({
       username: petugasReviewer.userPetugas,
       petugas: petugasReviewer.namaPetugas,
       alokasi: sql<number>`count(${masterBapp.id})`.mapWith(Number),
-      diterima: sql<number>`coalesce(sum(case when ${masterBapp.hasilAkhirReviu} = 'Sesuai' then 1 else 0 end), 0)`.mapWith(Number),
-      ditolak: sql<number>`coalesce(sum(case when ${masterBapp.statusProgress} = 'REVISI' then 0 when ${masterBapp.hasilAkhirReviu} = 'Tidak Sesuai' then 1 else 0 end), 0)`.mapWith(Number),
-      sedangRevisi: sql<number>`coalesce(sum(case when ${masterBapp.statusProgress} = 'REVISI' then 1 else 0 end), 0)`.mapWith(Number),
-      sudahDiperiksa: sql<number>`count(${masterBapp.hasilAkhirReviu})`.mapWith(Number),
-      belumDiperiksa: sql<number>`coalesce(sum(case when ${masterBapp.sudahAdaRevisi} = 'Tidak' and ${masterBapp.statusProgress} = 'INSTALASI SELESAI' then 1 else 0 end), 0)`.mapWith(Number)
+    diterima: sql<number>`coalesce(sum(case when ${reviewOutcome} = 'accepted' then 1 else 0 end), 0)`.mapWith(Number),
+    ditolak: sql<number>`coalesce(sum(case when ${reviewOutcome} = 'rejected' then 1 else 0 end), 0)`.mapWith(Number),
+    sedangRevisi: sql<number>`coalesce(sum(case when ${reviewOutcome} = 'revision' then 1 else 0 end), 0)`.mapWith(Number),
+    sudahDiperiksa: sql<number>`coalesce(sum(case when ${reviewOutcome} <> 'pending' then 1 else 0 end), 0)`.mapWith(Number),
+    belumDiperiksa: sql<number>`coalesce(sum(case when ${masterBapp.id} is not null and ${reviewOutcome} = 'pending' then 1 else 0 end), 0)`.mapWith(Number)
     }).from(petugasReviewer)
       .leftJoin(masterBapp, eq(petugasReviewer.userPetugas, masterBapp.petugasReviu))
       .groupBy(petugasReviewer.id)

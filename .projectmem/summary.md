@@ -1,11 +1,17 @@
 # projectmem - monitoring-digit
 
-_Last updated: 2026-11-16_
+_Last updated: 2026-11-17_
 
 ## Project purpose
 Nuxt dashboard + Elysia API + MySQL database.
 
 ## Recent issues
+- [OPEN] #0063 Rekap petugas: Alokasi tidak sama dengan Sudah Diperiksa; telusuri sumber dan rumus hitung. (open)
+  - Partial attempt: Menelusuri agregasi dashboard; query SQL lokal untuk rincian status petugas gagal karena koneksi database lokal tidak tersedia. [apps/api/src/bapp-review.ts:526]
+  - Partial attempt: Tentukan kategori saling lepas dari status REVISI, status final Hisense, hasil reviu, dan sisanya belum diperiksa; hitung ulang agregat dari kategori. [apps/api/src/bapp-review.ts:526]
+  - Partial attempt: Agregasi dashboard diganti menjadi kategori eksklusif; build API dan git diff --check lulus. Pemeriksaan total database belum jalan karena MySQL lokal ECONNREFUSED. [apps/api/src/bapp-review.ts:526]
+- [OPEN] #0062 Jumlah Perlu Direviu lokal 1.630 berbeda dari INSTALASI SELESAI Hisense 1.640; telusuri aturan hitung dan sinkron R1 [apps/api/src/bapp-review.ts] (open)
+  - Partial attempt: DB lokal menolak koneksi (ECONNREFUSED); API Hisense live berubah 1637 ke 1629 untuk INSTALASI SELESAI, seluruh 1635 sampel punya NPSN valid, A+B satu ID berhasil. Belum dapat cocokkan ID lokal server. [apps/api/src/bapp-review.ts:280]
 - [OPEN] #0058 Investigasi jumlah permintaan API Hisense tinggi; identifikasi jalur dan frekuensi panggilan dari aplikasi [apps/api/src/hisense.ts] (open)
   - Partial attempt: Audit alur: scheduler revisi tiap 60 detik melakukan GET per BAPP REVISI/Tidak Sesuai dengan bypassCache; statistik provinsi dan filter Dinas juga memindai semua halaman Hisense [apps/api/src/bapp-review.ts:290]
   - Partial attempt: Hapus scheduler revisi per-ID tiap 60 detik; deteksi revisi dan notifikasi tetap melalui import Excel otomatis 10 menit [apps/api/src/bapp-review.ts:285]
@@ -45,8 +51,6 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Sinkron BAPP otomatis setiap 10 menit memakai API Hisense R1: A daftar bertahap, B detail bulk hingga 100 ID hanya untuk transaksi baru/berubah; C detail tunggal saat aksi pengguna. Ekspor Excel tidak dipakai untuk sinkron terjadwal. [apps/api/src/bapp-review.ts:287]
 
 ## Notes
-- gotcha: Token Hisense petugas hanya ada di memori proses API; setelah restart API, petugas perlu logout/login lagi sebelum approve atau reject. [apps/api/src/hisense.ts:24]
-- New feature: feat: Update [apps/api/scripts/test-hisense-export.ts]
 - New feature: feat: Update [apps/api/src/bapp-review.ts]
 - New feature: feat: Update core [apps/api/scripts/test-bapp-notifications.ts]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
@@ -55,6 +59,8 @@ Nuxt dashboard + Elysia API + MySQL database.
 - gotcha: Dokumen Hisense menyediakan webhook INSTALLATION_UPDATE ke /update-installation dengan payload transaksi lengkap; API lokal belum punya handler. Queue per-ID saja tidak mengurangi jumlah GET. [hisense_direktorat_webhook.md:31]
 - New feature: feat: Update [apps/api/scripts/test-bapp-scans.ts]
 - New feature: feat: Update
+- New feature: feat: Update API HIsense [apps/api/scripts/test-bapp-serial-lookup.ts]
+- gotcha: Dashboard BAPP menghitung Alokasi dari semua master_bapp.petugas_reviu, Sudah Diperiksa dari hasil_akhir_reviu non-NULL, tetapi Belum Diperiksa hanya status INSTALASI SELESAI dengan sudah_ada_revisi='Tidak'; tiga kolom tidak membentuk partisi. [apps/api/src/bapp-review.ts:526]
 
 ## Key files
 - `.env.example`
