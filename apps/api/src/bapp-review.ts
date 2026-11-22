@@ -10,6 +10,7 @@ import { bappRejectionReasons } from '../../../shared/bapp-rejection-reasons.js'
 
 const npsnPattern = /^\d{8}$/
 const usernamePattern = /^[a-zA-Z0-9_.-]{3,80}$/
+const pendingBapp = and(eq(masterBapp.statusProgress, 'INSTALASI SELESAI'), eq(masterBapp.sudahAdaRevisi, 'Tidak'), eq(masterBapp.petugasReviu, ''), isNull(masterBapp.hasilAkhirReviu))
 export const lockedBappReviewStatuses = new Set(['DISETUJUI', 'SESUAI APIP', 'REVIU APIP'])
 const revisionReadyFields = {
   sudahAdaRevisi: 'Ya' as const, statusProgress: 'INSTALASI SELESAI', hasilAkhirReviu: null,
@@ -81,6 +82,14 @@ export function distributeNewBappRows<T extends { idTransaksi: string }>(rows: T
   return assignments
 }
 
+export function planBappDistribution<T>(rows: T[], allocations: Array<{ userPetugas: string; count: number }>) {
+  let offset = 0
+  return allocations.flatMap(allocation => {
+    const assigned = rows.slice(offset, offset + allocation.count).map(row => ({ row, userPetugas: allocation.userPetugas }))
+    offset += allocation.count
+    return assigned
+  })
+}
 export function prepareAssignments(rows: Array<{ npsn: string; userPetugas: string }>) {
   const seen = new Set<string>()
   return rows.map((row, index) => {
@@ -208,10 +217,11 @@ async function importBappRows(parsed: Awaited<ReturnType<typeof parseBappExcel>>
   progress(50, 'Memeriksa transaksi baru')
   const existing = new Map((await db.select({ idTransaksi: masterBapp.idTransaksi, statusProgress: masterBapp.statusProgress, hasilAkhirReviu: masterBapp.hasilAkhirReviu, petugasReviu: masterBapp.petugasReviu }).from(masterBapp)).map(row => [row.idTransaksi, row]))
   const newReviewRows = parsed.rows.filter(row => !existing.has(row.idTransaksi) && row.sudahAdaRevisi === 'Tidak' && row.statusProgress === 'INSTALASI SELESAI')
+  const newReviewIds = new Set(newReviewRows.map(row => row.idTransaksi))
   const revisionRows = parsed.rows.filter(row => row.statusProgress === 'INSTALASI SELESAI' && (existing.get(row.idTransaksi)?.statusProgress === 'REVISI' || existing.get(row.idTransaksi)?.hasilAkhirReviu === 'Tidak Sesuai'))
   const revisionIds = new Set(revisionRows.map(row => row.idTransaksi))
   const reviewers = await db.select({ userPetugas: petugasReviewer.userPetugas, namaPetugas: petugasReviewer.namaPetugas, alokasiPersen: petugasReviewer.alokasiPersen }).from(petugasReviewer)
-  const allocations = distributeNewBappRows(newReviewRows, reviewers)
+  const allocations = source ? new Map<string, string>() : distributeNewBappRows(newReviewRows, reviewers)
   const created = parsed.rows.filter(row => !existing.has(row.idTransaksi)).length
   await db.transaction(async tx => {
     for (let index = 0; index < parsed.rows.length; index++) {
@@ -226,7 +236,7 @@ async function importBappRows(parsed: Awaited<ReturnType<typeof parseBappExcel>>
         ...(!keepReviewer && row.petugasReviu ? { petugasReviu: row.petugasReviu } : {}),
         ...(revisionReady ? revisionReadyFields : {})
       }
-      await tx.insert(masterBapp).values({ idTransaksi: row.idTransaksi, petugasReviu: assignedReviewer ?? row.petugasReviu, ...metadata })
+      await tx.insert(masterBapp).values({ idTransaksi: row.idTransaksi, petugasReviu: assignedReviewer ?? (source && newReviewIds.has(row.idTransaksi) ? '' : row.petugasReviu), ...metadata })
         .onDuplicateKeyUpdate({ set: metadata })
       if (index % 25 === 0 || index === parsed.rows.length - 1) progress(50 + Math.round((index + 1) / parsed.rows.length * 45), `Menyimpan ${index + 1} dari ${parsed.rows.length} transaksi`)
     }
@@ -236,6 +246,7 @@ async function importBappRows(parsed: Awaited<ReturnType<typeof parseBappExcel>>
     }))).onDuplicateKeyUpdate({ set: { idTransaksi: sql`${bappReviewNotifications.idTransaksi}` } })
     for (const row of revisionRows) {
       const userPetugas = existing.get(row.idTransaksi)!.petugasReviu
+      if (!userPetugas) continue
       await tx.insert(bappReviewNotifications).values({ idTransaksi: row.idTransaksi, userPetugas, namaSekolah: row.namaSekolah, npsn: row.npsn })
         .onDuplicateKeyUpdate({ set: { userPetugas, namaSekolah: row.namaSekolah, npsn: row.npsn, readAt: null, createdAt: new Date() } })
     }
@@ -419,6 +430,46 @@ export const adminBappReview = new Elysia({ prefix: '/api/admin/bapp-review' })
   }, { body: t.Object({ file: t.File() }) })
 .get('/sync-hisense', () => hisenseSyncJob)
 .get('/sync-hisense/history', async () => ({ runs: await db.select().from(bappHisenseSyncRuns).orderBy(desc(bappHisenseSyncRuns.id)).limit(20) }))
+.get('/pending-distribution', async () => {
+  const [row] = await db.select({ count: sql<number>`count(*)` }).from(masterBapp).where(pendingBapp)
+  return { count: row?.count ?? 0 }
+})
+.post('/distribute', async context => {
+  if (context.body.allocations.some(item => !Number.isSafeInteger(item.reviewerId) || item.reviewerId < 1 || !Number.isSafeInteger(item.count) || item.count < 0)) {
+    context.set.status = 400
+    return { message: 'Isi jumlah BAPP yang valid untuk setiap petugas.' }
+  }
+  const allocations = context.body.allocations.filter(item => item.count > 0)
+  const total = allocations.reduce((sum, item) => sum + item.count, 0)
+  if (!Number.isSafeInteger(total) || total < 1 || new Set(allocations.map(item => item.reviewerId)).size !== allocations.length) {
+    context.set.status = 400
+    return { message: 'Isi jumlah BAPP yang valid untuk setiap petugas.' }
+  }
+  const reviewers = await db.select({ id: petugasReviewer.id, userPetugas: petugasReviewer.userPetugas }).from(petugasReviewer)
+  if (allocations.some(item => !reviewers.some(reviewer => reviewer.id === item.reviewerId))) {
+    context.set.status = 400
+    return { message: 'Petugas reviewer tidak ditemukan.' }
+  }
+  try {
+    await db.transaction(async tx => {
+      const rows = await tx.select({ idTransaksi: masterBapp.idTransaksi, namaSekolah: masterBapp.namaSekolah, npsn: masterBapp.npsn }).from(masterBapp).where(pendingBapp).orderBy(asc(masterBapp.idTransaksi)).limit(total)
+      if (rows.length !== total) throw new Error('Jumlah BAPP tersedia berubah. Muat ulang pembagian.')
+      const planned = planBappDistribution(rows, allocations.map(item => ({ userPetugas: reviewers.find(reviewer => reviewer.id === item.reviewerId)!.userPetugas, count: item.count })))
+      for (const { row, userPetugas } of planned) {
+          const [change] = await tx.update(masterBapp).set({ petugasReviu: userPetugas }).where(and(eq(masterBapp.idTransaksi, row.idTransaksi), pendingBapp))
+          if (change.affectedRows !== 1) throw new Error('Jumlah BAPP tersedia berubah. Muat ulang pembagian.')
+          await tx.insert(bappReviewNotifications).values({ idTransaksi: row.idTransaksi, userPetugas, namaSekolah: row.namaSekolah, npsn: row.npsn })
+            .onDuplicateKeyUpdate({ set: { userPetugas, namaSekolah: row.namaSekolah, npsn: row.npsn, readAt: null, createdAt: new Date() } })
+      }
+    })
+  } catch (error) {
+    context.set.status = 409
+    return { message: error instanceof Error ? error.message : 'Pembagian BAPP gagal.' }
+  }
+  const actor = await getSessionUser(context)
+  if (actor) await recordActivity(context, actor, 'BAPP_DISTRIBUTED', `${total} transaksi`).catch(console.error)
+  return { success: true, allocated: total }
+}, { body: t.Object({ allocations: t.Array(t.Object({ reviewerId: t.Number(), count: t.Number() })) }) })
 .post('/sync-hisense', async context => {
   const actor = await getSessionUser(context)
   const job = await startHisenseSyncJob('manual', async result => {

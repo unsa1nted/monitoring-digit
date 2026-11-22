@@ -7,6 +7,52 @@ const { data, error, refresh } = await useFetch<{ reviewers: Reviewer[] }>('/api
   credentials: 'include',
   headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
 })
+const { data: pendingDistribution, refresh: refreshPendingDistribution } = await useFetch<{ count: number }>('/api/admin/bapp-review/pending-distribution', {
+  baseURL: config.public.apiBase,
+  credentials: 'include',
+  headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+})
+const distributionOpen = ref(false)
+const distributionButton = ref<HTMLButtonElement | null>(null)
+const distributionCloseButton = ref<HTMLButtonElement | null>(null)
+const distributing = ref(false)
+const distributionCounts = reactive<Record<number, number>>({})
+const distributionTotal = computed(() => (data.value?.reviewers ?? []).reduce((sum, item) => sum + (Number(distributionCounts[item.id]) || 0), 0))
+async function openDistribution() {
+  problem.value = ''
+  await refreshPendingDistribution()
+  for (const item of data.value?.reviewers ?? []) distributionCounts[item.id] = 0
+  distributionOpen.value = true
+  await nextTick()
+  distributionCloseButton.value?.focus()
+}
+function closeDistribution() {
+  distributionOpen.value = false
+  nextTick(() => distributionButton.value?.focus())
+}
+function distributeEvenly() {
+  const reviewers = data.value?.reviewers ?? []
+  const count = pendingDistribution.value?.count ?? 0
+  reviewers.forEach((item, index) => { distributionCounts[item.id] = Math.floor(count / reviewers.length) + (index < count % reviewers.length ? 1 : 0) })
+}
+async function saveDistribution() {
+  if (distributing.value) return
+  const available = pendingDistribution.value?.count ?? 0
+  const allocations = (data.value?.reviewers ?? []).map(item => ({ reviewerId: item.id, count: Number(distributionCounts[item.id]) || 0 }))
+  if (allocations.some(item => !Number.isSafeInteger(item.count) || item.count < 0) || distributionTotal.value < 1 || distributionTotal.value > available) {
+    problem.value = `Jumlah pembagian harus 1 sampai ${available} BAPP.`
+    return
+  }
+  distributing.value = true
+  problem.value = message.value = ''
+  try {
+    const result = await $fetch<{ allocated: number }>('/api/admin/bapp-review/distribute', { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { allocations } })
+    closeDistribution()
+    message.value = `${result.allocated} BAPP dibagikan ke petugas.`
+    await refreshPendingDistribution()
+  } catch (error) { problem.value = errorText(error); await refreshPendingDistribution() }
+  finally { distributing.value = false }
+}
 const reviewer = reactive({ namaPetugas: '', userPetugas: '' })
 const importFile = ref<File | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
@@ -53,9 +99,10 @@ async function pollHisenseSync() {
     if (syncJob.value?.status === 'done' && syncJob.value.result && syncJob.value.id !== lastReportedSyncId) {
       lastReportedSyncId = syncJob.value.id
       const result = syncJob.value.result
-      message.value = `${result.created} transaksi baru, ${result.allocated} dibagi ke petugas, ${result.updated} diperbarui dari Hisense.`
+      message.value = `${result.created} transaksi baru, ${result.updated} diperbarui dari Hisense.`
       await refresh()
       await refreshHistory()
+      await refreshPendingDistribution()
     } else if (syncJob.value?.status === 'error' && syncJob.value.id !== lastReportedSyncId) {
       lastReportedSyncId = syncJob.value.id
       problem.value = syncJob.value.message ?? 'Sinkronisasi Hisense gagal.'
@@ -150,8 +197,9 @@ async function syncHisenseReviewers() {
       <p v-if="message" role="status" class="text-sm text-teal-700">{{ message }}</p>
       <section class="space-y-3 rounded-theme border border-stone-200 bg-white p-5 shadow-card">
         <h2 class="text-lg font-semibold">Sinkron API Hisense</h2>
-        <p class="text-sm text-muted">Sistem memeriksa daftar transaksi setiap 10 menit dan mengambil detail baru atau berubah secara bulk. Tombol ini menjalankan sinkronisasi langsung. Transaksi baru berstatus INSTALASI SELESAI tanpa riwayat revisi dibagikan ke petugas.</p>
+        <p class="text-sm text-muted">Sistem memeriksa daftar transaksi setiap 10 menit dan mengambil detail baru atau berubah secara bulk. Transaksi baru berstatus INSTALASI SELESAI tanpa riwayat revisi menunggu pembagian oleh admin.</p>
         <button type="button" :disabled="syncJob?.status === 'running'" class="rounded-theme bg-ink px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50" @click="syncHisenseApi">{{ syncJob?.status === 'running' ? 'Sinkronisasi berjalan…' : 'Sinkron dari Hisense' }}</button>
+        <button ref="distributionButton" type="button" class="ml-2 rounded-theme border border-sky-600 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100" @click="openDistribution">{{ pendingDistribution?.count ?? 0 }} BAPP Tersedia Untuk Dibagikan</button>
         <div v-if="syncJob?.status === 'running'" role="status" class="space-y-1 text-sm text-muted">
           <p>{{ syncJob.stage }} — {{ syncJob.percent }}%</p>
           <progress :value="syncJob.percent" max="100" class="h-3 w-full accent-sky-600">{{ syncJob.percent }}%</progress>
@@ -162,19 +210,33 @@ async function syncHisenseReviewers() {
           <p v-else-if="!historyData?.runs?.length" class="mt-2 text-sm text-muted">Belum ada sinkronisasi Hisense yang selesai.</p>
           <div v-else class="mt-3 space-y-2">
             <details v-for="run in historyData.runs" :key="run.id" class="rounded-theme border border-stone-200 bg-stone-50 p-3">
-              <summary class="cursor-pointer text-sm font-medium">{{ syncDate(run.syncedAt) }} WIB · {{ run.source === 'automatic' ? 'Otomatis' : 'Manual' }} · {{ run.allocated }} BAPP baru dibagikan</summary>
+              <summary class="cursor-pointer text-sm font-medium">{{ syncDate(run.syncedAt) }} WIB · {{ run.source === 'automatic' ? 'Otomatis' : 'Manual' }} · {{ run.created }} transaksi baru</summary>
               <div class="mt-3 border-t border-stone-200 pt-3 text-sm">
                 <p class="text-muted">{{ run.created }} transaksi baru, {{ run.updated }} transaksi diperbarui.</p>
-                <p class="mt-2 font-medium">Pembagian per petugas</p>
-                <ul v-if="run.distribution.length" class="mt-2 max-h-64 divide-y divide-stone-200 overflow-y-auto">
+                <p v-if="run.allocated" class="mt-2 font-medium">Pembagian saat sinkron</p>
+                <ul v-if="run.allocated && run.distribution.length" class="mt-2 max-h-64 divide-y divide-stone-200 overflow-y-auto">
                   <li v-for="item in run.distribution" :key="item.userPetugas" class="flex justify-between gap-3 py-1.5"><span>{{ item.namaPetugas }} ({{ item.userPetugas }})</span><strong>{{ item.count }} BAPP</strong></li>
                 </ul>
-                <p v-else class="mt-2 text-muted">Belum ada petugas reviewer.</p>
+                <p v-else class="mt-2 text-muted">Tidak ada pembagian saat sinkron.</p>
               </div>
             </details>
           </div>
         </div>
       </section>
+      <div v-if="distributionOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @keydown.esc="closeDistribution">
+        <div role="dialog" aria-modal="true" aria-labelledby="distribution-title" class="w-full max-w-xl rounded-theme bg-white p-6 shadow-xl">
+          <div class="flex items-start justify-between gap-4"><h2 id="distribution-title" class="text-lg font-semibold">Bagikan {{ pendingDistribution?.count ?? 0 }} BAPP</h2><button ref="distributionCloseButton" type="button" aria-label="Tutup" class="text-xl text-muted" @click="closeDistribution">×</button></div>
+          <p class="mt-2 text-sm text-muted">Isi jumlah BAPP untuk setiap petugas. Sisa BAPP tetap tersedia untuk pembagian berikutnya.</p>
+          <form class="mt-4 space-y-4" @submit.prevent="saveDistribution">
+            <div class="max-h-80 space-y-3 overflow-y-auto">
+              <label v-for="item in data?.reviewers ?? []" :key="item.id" class="flex items-center justify-between gap-4 text-sm"><span>{{ item.namaPetugas }} ({{ item.userPetugas }})</span><input v-model.number="distributionCounts[item.id]" type="number" min="0" :max="pendingDistribution?.count ?? 0" step="1" required class="w-24 rounded-theme border border-stone-300 px-3 py-2 text-right"></label>
+            </div>
+            <p class="text-sm font-medium">{{ distributionTotal }} dari {{ pendingDistribution?.count ?? 0 }} BAPP dipilih</p>
+            <p v-if="problem" role="alert" class="text-sm text-red-700">{{ problem }}</p>
+            <div class="flex flex-wrap gap-2"><button type="button" :disabled="!data?.reviewers?.length" class="rounded-theme border border-stone-300 px-4 py-2 text-sm font-medium disabled:opacity-50" @click="distributeEvenly">Bagikan merata</button><button type="submit" :disabled="distributing || !distributionTotal || distributionTotal > (pendingDistribution?.count ?? 0)" class="rounded-theme bg-ink px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{{ distributing ? 'Membagikan…' : 'Simpan pembagian' }}</button></div>
+          </form>
+        </div>
+      </div>
       <form class="space-y-3 rounded-theme border border-stone-200 bg-white p-5 shadow-card" @submit.prevent="importExcel">
         <h2 class="text-lg font-semibold">Impor Excel BAPP</h2>
         <p class="text-sm text-muted">Impor hanya status DISETUJUI, INSTALASI SELESAI, REVISI, SESUAI APIP, dan REVIU APIP. Transaksi baru dengan Resubmit FALSE dan INSTALASI SELESAI dibagi sesuai persentase petugas. Sisa persentase dibagi rata ke petugas tanpa persentase. Impor ulang tidak mengubah petugas transaksi tersebut. Hasil reviu foto yang sudah tersimpan tetap.</p>
