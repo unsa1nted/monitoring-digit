@@ -1,6 +1,6 @@
 # projectmem - monitoring-digit
 
-_Last updated: 2026-11-22_
+_Last updated: 2026-11-23_
 
 ## Project purpose
 Nuxt dashboard + Elysia API + MySQL database.
@@ -20,6 +20,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [OPEN] #0052 Reviewer MOE tetap direktoratsmk setelah reviu memakai token sistem meski payload reviewer_name adalah username petugas login. [apps/api/src/hisense.ts:61] (open)
   - Partial attempt: Bandingkan log persetujuan aplikasi terbaru dengan GET Hisense: 1 persetujuan ditemukan, approved_by_moe tidak cocok username login dan bernilai akun integrasi direktoratsmk. Payload reviewer_name tidak menentukan field itu. [apps/api/src/hisense.ts:61]
   - Partial attempt: Batalkan login Hisense per petugas; kembali ke token sistem dan reviewer_name=username login. Mock review, build API/web lulus; Hisense remote sebelumnya tetap menyimpan direktoratsmk. [apps/api/src/hisense.ts:61]
+- [DONE] #0065 Sinkron manual BAPP berhenti saat detail transaksi Hisense tidak valid; perlu lanjut dan retry per ID [apps/api/src/bapp-review.ts] (fixed)
 - [DONE] #0064 Sinkron Hisense langsung membagikan BAPP baru ke petugas; perlu antrean alokasi manual dan tombol bagikan merata. [apps/api/src/bapp-review.ts:201] (fixed)
 - [DONE] #0061 Sinkron otomatis BAPP perlu memakai API direktorat R1: A daftar, B detail bulk, C detail tunggal; hindari ekspor Excel [apps/api/src/bapp-review.ts:254] (fixed)
 - [DONE] #0060 Halaman daftar dan detail Hisense masih memanggil API saat dibuka walau timer sinkron sudah dihapus [apps/web/pages/hisense.vue:19] (fixed)
@@ -29,8 +30,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - [DONE] #0055 Approve BAPP menampilkan error status DISETUJUI saat transaksi sebenarnya sudah disetujui; perlu respons sukses idempoten. [apps/api/src/bapp-review.ts:552] (fixed)
 - [DONE] #0054 Permintaan catatan perbaikan untuk status Revisi Tersedia dan autosave pilihan reviu foto; periksa alur penyimpanan saat ini. [apps/web/pages/cek-bapp.vue] (fixed)
 - [DONE] #0051 Penolakan Hisense perlu memakai PUT /hi-transaksi/alokasi/review/:id dengan tag_revisi string; contoh memakai token StaffSMK, sementara aplikasi memakai token Direktorat SMK. [apps/api/src/hisense.ts:61] (fixed)
-- [DONE] #0050 Perlu memastikan Reviewer MOE Hisense cocok dengan petugas yang menyetujui, serta menyimpan riwayat sinkron Excel otomatis dengan waktu dan jumlah alokasi per petugas. [apps/api/src/bapp-review.ts] (fixed)
-- ...and 49 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
+- ...and 50 older fixed issues not shown (`pjm search`, or `get_issue(issue_id)` via MCP)
 
 ## Decisions
 - ...4 earlier decisions not shown (`pjm search`, or `search_events(query)` via MCP)
@@ -51,7 +51,6 @@ Nuxt dashboard + Elysia API + MySQL database.
 - Sinkron BAPP otomatis setiap 10 menit memakai API Hisense R1: A daftar bertahap, B detail bulk hingga 100 ID hanya untuk transaksi baru/berubah; C detail tunggal saat aksi pengguna. Ekspor Excel tidak dipakai untuk sinkron terjadwal. [apps/api/src/bapp-review.ts:287]
 
 ## Notes
-- New feature: feat: Update core [apps/api/scripts/test-bapp-notifications.ts]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update [apps/web/pages/cek-bapp.vue]
 - New feature: feat: Update modal bapp [apps/web/pages/cek-bapp.vue]
@@ -61,6 +60,7 @@ Nuxt dashboard + Elysia API + MySQL database.
 - New feature: feat: Update API HIsense [apps/api/scripts/test-bapp-serial-lookup.ts]
 - gotcha: Dashboard BAPP menghitung Alokasi dari semua master_bapp.petugas_reviu, Sudah Diperiksa dari hasil_akhir_reviu non-NULL, tetapi Belum Diperiksa hanya status INSTALASI SELESAI dengan sudah_ada_revisi='Tidak'; tiga kolom tidak membentuk partisi. [apps/api/src/bapp-review.ts:526]
 - New feature: feat: Update core [apps/api/scripts/test-bapp-dashboard-totals.ts]
+- New feature: feat: add manual BAPP allocation queue and uniform distribution features [apps/api/scripts/test-bapp-distribution.ts]
 
 ## Key files
 - `.env.example`

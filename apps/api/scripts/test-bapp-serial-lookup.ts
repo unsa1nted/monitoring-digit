@@ -6,7 +6,7 @@ process.env.HISENSE_SMK_USERNAME = 'test'
 process.env.HISENSE_SMK_PASSWORD = 'test'
 process.env.AUTH_SECRET ??= 'test-only-secret-for-hisense-lookup-0001'
 const { getHisenseBySerialNumber, getHisenseBulkTransactions, getHisenseTransaction } = await import('../src/hisense.js')
-const { bappRowFromHisense } = await import('../src/bapp-review.js')
+const { bappRowFromHisense, parseHisenseBappDetails } = await import('../src/bapp-review.js')
 const originalFetch = globalThis.fetch
 let pages: Record<string, unknown>[] = []
 const searchedPages: number[] = []
@@ -43,6 +43,12 @@ try {
   assert.equal((await getHisenseBulkTransactions(['TX-1', 'TX-2'])).length, 2)
   await assert.rejects(getHisenseBulkTransactions(Array.from({ length: 101 }, (_, index) => `TX-${index}`)), /100 ID/)
   assert.equal(bappRowFromHisense({ id_transaksi: 'TX-1', kode_status_progress: 'INSTALASI SELESAI', npsn_info: { npsn: '00123456' }, riwayat_revisi_moe: [{}] }).sudahAdaRevisi, 'Ya')
+const parsed = parseHisenseBappDetails([
+  { id_transaksi: 'HI202600000248967', kode_status_progress: 'INSTALASI SELESAI', npsn_info: null },
+  { id_transaksi: 'TX-2', kode_status_progress: 'INSTALASI SELESAI', npsn_info: { npsn: '00123456' } }
+])
+assert.deepEqual(parsed.rows.map(row => row.idTransaksi), ['TX-2'])
+assert.deepEqual(parsed.failures.map(item => item.id), ['HI202600000248967'])
   pages = [response([record], 1, true), response([{ ...record, id_transaksi: 'OTHER-UNIT', npsn_info: { npsn: 'OTHER-SCHOOL' } }], 2)]
   await assert.rejects(getHisenseBySerialNumber('000-SN-ABC', 'smk', { bypassCache: true }), /lebih dari satu/)
   pages = [response([{ ...record, serial_number: ' 000-SN-ABC ' }])]

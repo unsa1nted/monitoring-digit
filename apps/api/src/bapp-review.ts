@@ -288,6 +288,17 @@ export function bappRowFromHisense(transaction: HisenseTransaction): Awaited<Ret
   }
 }
 
+export function parseHisenseBappDetails(details: HisenseTransaction[]) {
+  const rows: Awaited<ReturnType<typeof parseBappExcel>>['rows'] = []
+  const failures: Array<{ id: string; message: string }> = []
+  for (const detail of details) {
+    if (!syncableBappStatuses.has(detail.kode_status_progress?.trim().toUpperCase() ?? '')) continue
+    try { rows.push(bappRowFromHisense(detail)) }
+    catch (error) { failures.push({ id: detail.id_transaksi ?? '', message: error instanceof Error ? error.message : 'Data transaksi tidak valid.' }) }
+  }
+  return { rows, failures }
+}
+
 async function syncBappFromHisenseApi(progress: BappImportProgress, source: 'automatic' | 'manual') {
   progress(5, 'Mengambil daftar transaksi Hisense')
   const existing = new Map((await db.select({ idTransaksi: masterBapp.idTransaksi, statusProgress: masterBapp.statusProgress, hasilAkhirReviu: masterBapp.hasilAkhirReviu, npsn: masterBapp.npsn, serialNumber: masterBapp.serialNumber }).from(masterBapp)).map(row => [row.idTransaksi, row]))
@@ -306,16 +317,27 @@ async function syncBappFromHisenseApi(progress: BappImportProgress, source: 'aut
     progress(20, `Memeriksa ${seen.size} transaksi Hisense`)
   }
   const rows: Awaited<ReturnType<typeof parseBappExcel>>['rows'] = []
+  const failures: Array<{ id: string; message: string }> = []
   for (let index = 0; index < changedIds.length; index += 100) {
-    const details = await getHisenseBulkTransactions(changedIds.slice(index, index + 100))
-    for (const detail of details) if (syncableBappStatuses.has(detail.kode_status_progress?.trim().toUpperCase() ?? '')) rows.push(bappRowFromHisense(detail))
-    progress(20 + Math.round((index + details.length) / changedIds.length * 25), `Mengambil detail ${index + details.length} dari ${changedIds.length} transaksi`)
+    const ids = changedIds.slice(index, index + 100)
+    try {
+      const details = await getHisenseBulkTransactions(ids)
+      const parsed = parseHisenseBappDetails(details)
+      rows.push(...parsed.rows)
+      failures.push(...parsed.failures)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Detail Hisense gagal dimuat.'
+      failures.push(...ids.map(id => ({ id, message })))
+    }
+    progress(20 + Math.round((index + ids.length) / changedIds.length * 25), `Mengambil detail ${index + ids.length} dari ${changedIds.length} transaksi`)
   }
-  return importBappRows({ rows, skippedStatus: changedIds.length - rows.length, skippedDuplicate: 0 }, progress, source)
+  const result = await importBappRows({ rows, skippedStatus: changedIds.length - rows.length - failures.length, skippedDuplicate: 0 }, progress, source)
+  return { result, failures, syncedIds: rows.map(row => row.idTransaksi) }
 }
 
-type HisenseSyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: Awaited<ReturnType<typeof importBappExcel>>; message?: string }
+type HisenseSyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: Awaited<ReturnType<typeof importBappExcel>>; failures?: Array<{ id: string; message: string }>; message?: string }
 let hisenseSyncJob: HisenseSyncJob | null = null
+const pendingHisenseFailures = new Map<string, string>()
 
 export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'automatic', onSuccess?: (result: Awaited<ReturnType<typeof importBappExcel>>) => Promise<void>) {
   if (hisenseSyncJob?.status === 'running') return null
@@ -328,7 +350,11 @@ export async function startHisenseSyncJob(source: 'automatic' | 'manual' = 'auto
   hisenseSyncJob = job
   void (async () => {
     try {
-      job.result = await syncBappFromHisenseApi((percent, stage) => { job.percent = percent; job.stage = stage }, source)
+      const { result, failures, syncedIds } = await syncBappFromHisenseApi((percent, stage) => { job.percent = percent; job.stage = stage }, source)
+      job.result = result
+      for (const id of syncedIds) pendingHisenseFailures.delete(id)
+      for (const failure of failures) pendingHisenseFailures.set(failure.id, failure.message)
+      job.failures = [...pendingHisenseFailures].map(([id, message]) => ({ id, message }))
       job.status = 'done'
       if (onSuccess) await onSuccess(job.result).catch(console.error)
     } catch (error) {
@@ -478,6 +504,25 @@ export const adminBappReview = new Elysia({ prefix: '/api/admin/bapp-review' })
   if (!job) { context.set.status = 409; return { message: 'Sinkronisasi Hisense sedang berjalan.' } }
   return job
 })
+.post('/sync-hisense/transaction', async context => {
+  if (hisenseSyncJob?.status === 'running') { context.set.status = 409; return { message: 'Sinkronisasi Hisense sedang berjalan.' } }
+  const id = context.body.id.trim()
+  if (!id || id.length > 80) { context.set.status = 400; return { message: 'ID transaksi tidak valid.' } }
+  try {
+    const detail = await getHisenseTransaction(id, 'smk', { bypassCache: true })
+    if (!detail) { context.set.status = 404; return { message: 'Transaksi tidak ditemukan di Hisense.' } }
+    const row = bappRowFromHisense(detail)
+    const result = await importBappRows({ rows: [row], skippedStatus: 0, skippedDuplicate: 0 }, () => {}, 'manual')
+    pendingHisenseFailures.delete(id)
+    if (hisenseSyncJob?.failures) hisenseSyncJob.failures = hisenseSyncJob.failures.filter(item => item.id !== id)
+    const actor = await getSessionUser(context)
+    if (actor) await recordActivity(context, actor, 'BAPP_HISENSE_SYNCED', `1 transaksi (${id})`).catch(console.error)
+    return result
+  } catch (error) {
+    context.set.status = 400
+    return { message: error instanceof Error ? error.message : 'Transaksi Hisense gagal disinkronkan.' }
+  }
+}, { body: t.Object({ id: t.String({ maxLength: 80 }) }) })
 .post('/import-reviews', async context => {
   const file = context.body.file
   if (!file.name.toLowerCase().endsWith('.xlsx') || file.size > 20 * 1024 * 1024) {

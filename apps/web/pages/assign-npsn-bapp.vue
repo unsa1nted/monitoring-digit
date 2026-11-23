@@ -63,7 +63,7 @@ const importingReviews = ref(false)
 const savingReviewer = ref(false)
 const savingAllocation = ref<number | null>(null)
 const syncingHisenseReviewers = ref(false)
-type SyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: { created: number; updated: number; allocated: number; skippedStatus: number; skippedDuplicate: number }; message?: string }
+type SyncJob = { id: string; status: 'running' | 'done' | 'error'; percent: number; stage: string; result?: { created: number; updated: number; allocated: number; skippedStatus: number; skippedDuplicate: number }; failures?: Array<{ id: string; message: string }>; message?: string }
 type SyncRun = { id: number; source: 'automatic' | 'manual'; syncedAt: string; created: number; updated: number; allocated: number; distribution: Array<{ userPetugas: string; namaPetugas: string; count: number }> }
 const { data: historyData, error: historyError, refresh: refreshHistory } = await useFetch<{ runs: SyncRun[] }>('/api/admin/bapp-review/sync-hisense/history', {
   baseURL: config.public.apiBase,
@@ -72,6 +72,8 @@ const { data: historyData, error: historyError, refresh: refreshHistory } = awai
 })
 const syncDate = (value: string) => new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 const syncJob = ref<SyncJob | null>(null)
+const transactionId = ref('')
+const addingTransaction = ref(false)
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 const message = ref('')
 const problem = ref('')
@@ -99,7 +101,7 @@ async function pollHisenseSync() {
     if (syncJob.value?.status === 'done' && syncJob.value.result && syncJob.value.id !== lastReportedSyncId) {
       lastReportedSyncId = syncJob.value.id
       const result = syncJob.value.result
-      message.value = `${result.created} transaksi baru, ${result.updated} diperbarui dari Hisense.`
+message.value = `${result.created} transaksi baru, ${result.updated} diperbarui dari Hisense.${syncJob.value.failures?.length ? ` ${syncJob.value.failures.length} transaksi gagal dan dapat dicoba per ID.` : ''}`
       await refresh()
       await refreshHistory()
       await refreshPendingDistribution()
@@ -120,6 +122,23 @@ async function syncHisenseApi() {
     if (syncTimer) clearTimeout(syncTimer)
     syncTimer = setTimeout(pollHisenseSync, 1000)
   } catch (error) { problem.value = errorText(error) }
+}
+async function addHisenseTransaction(id = transactionId.value) {
+if (addingTransaction.value || syncJob.value?.status === 'running') return
+const trimmed = id.trim()
+if (!trimmed) { problem.value = 'Isi ID transaksi Hisense.'; return }
+addingTransaction.value = true
+problem.value = message.value = ''
+try {
+const result = await $fetch<{ created: number; updated: number }>('/api/admin/bapp-review/sync-hisense/transaction', { baseURL: config.public.apiBase, credentials: 'include', method: 'POST', body: { id: trimmed } })
+message.value = `${trimmed}: ${result.created ? 'ditambahkan' : 'diperbarui'} di master BAPP.`
+transactionId.value = ''
+if (syncJob.value?.failures) syncJob.value.failures = syncJob.value.failures.filter(item => item.id !== trimmed)
+await refresh()
+await refreshHistory()
+await refreshPendingDistribution()
+} catch (error) { problem.value = errorText(error) }
+finally { addingTransaction.value = false }
 }
 onMounted(pollHisenseSync)
 onUnmounted(() => { syncPollingActive = false; if (syncTimer) clearTimeout(syncTimer) })
@@ -203,6 +222,21 @@ async function syncHisenseReviewers() {
         <div v-if="syncJob?.status === 'running'" role="status" class="space-y-1 text-sm text-muted">
           <p>{{ syncJob.stage }} — {{ syncJob.percent }}%</p>
           <progress :value="syncJob.percent" max="100" class="h-3 w-full accent-sky-600">{{ syncJob.percent }}%</progress>
+        </div>
+        <form class="flex flex-wrap items-end gap-2" @submit.prevent="addHisenseTransaction()">
+          <label class="min-w-56 flex-1 text-sm font-medium">Tambah transaksi Hisense per ID
+            <input v-model="transactionId" :class="inputClass" maxlength="80" required placeholder="ID Transaksi">
+          </label>
+          <button type="submit" :disabled="addingTransaction || syncJob?.status === 'running'" class="rounded-theme border border-sky-600 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 disabled:opacity-50">{{ addingTransaction ? 'Menambahkan…' : 'Tambah transaksi' }}</button>
+        </form>
+        <div v-if="syncJob?.failures?.length" class="space-y-2 text-sm">
+          <p class="font-medium text-red-700">{{ syncJob.failures.length }} transaksi gagal disinkronkan. Coba lagi per ID setelah data Hisense diperbaiki.</p>
+          <ul class="max-h-48 overflow-y-auto rounded-theme border border-stone-200 px-3">
+            <li v-for="item in syncJob.failures" :key="item.id" class="flex items-center justify-between gap-3 border-b border-stone-100 py-2 last:border-0">
+              <span><strong>{{ item.id }}</strong> — {{ item.message }}</span>
+              <button type="button" :disabled="addingTransaction || syncJob?.status === 'running'" class="shrink-0 font-semibold text-sky-800 disabled:opacity-50" @click="addHisenseTransaction(item.id)">Coba lagi</button>
+            </li>
+          </ul>
         </div>
         <div class="border-t border-stone-200 pt-4">
           <h3 class="font-semibold">Riwayat sinkron Hisense</h3>
